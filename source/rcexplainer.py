@@ -15,33 +15,47 @@ from gnn_trainer import GNNTrainer
 from torch_geometric.data import Data, DataLoader
 from torch_geometric.utils import dense_to_sparse
 
+# "convert a list of graph data and their corresponding node embeddings into a format suitable for training a model."
+import torch
+from torch_geometric.utils import to_dense_adj
 
 def get_rce_format(data, node_embeddings):
+    # Get the number of nodes for each graph
     num_nodes = [graph.num_nodes for graph in data]
+    # Find the maximum number of nodes in the dataset
     max_num_nodes = max(num_nodes)
+    # Extract labels for each graph
     label = [graph.y for graph in data]
-    feat = []
-    adj = []
-    node_embs_pads = []
+    feat = []  # List to store padded node features
+    adj = []   # List to store padded adjacency matrices
+    node_embs_pads = []  # List to store padded node embeddings
 
     for i, graph in enumerate(data):
+        # Pad node features to the size of the largest graph
         m = torch.nn.ZeroPad2d((0, 0, 0, max_num_nodes - graph.num_nodes))
         feat.append(m(graph.x))
+        
+        # Convert edge_index to dense adjacency matrix and pad it if necessary
         if graph.edge_index.shape[1] != 0:
             adj.append(to_dense_adj(graph.edge_index, max_num_nodes=max_num_nodes)[0])
         else:
             adj.append(torch.zeros(max_num_nodes, max_num_nodes))
+        
+        # Pad node embeddings to the size of the largest graph
         node_embs_pads.append(m(node_embeddings[i]))
 
+    # Stack padded node features, adjacency matrices, and node embeddings
     adj = torch.stack(adj)
     feat = torch.stack(feat)
     label = torch.LongTensor(label)
     num_nodes = torch.LongTensor(num_nodes)
     node_embs_pads = torch.stack(node_embs_pads)
 
+    # Return the formatted tensors
     return adj, feat, label, num_nodes, node_embs_pads
 
-
+# extract rules from a model and its predictions on a dataset. 
+# These rules are then saved in a dictionary format along with other information.
 def extract_rules(model, train_data, preds, embs, device, pool_size=50):
     I = 36
     length = 2
@@ -215,6 +229,9 @@ explainer = ExplainModule(
     device=device,
     args=args
 )
+
+
+
 
 if args.dataset in ['Mutagenicity']:
     args.beta_ = args.beta_ * 30
