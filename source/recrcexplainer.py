@@ -164,7 +164,7 @@ parser.add_argument('--device', type=int, default=0)
 parser.add_argument('--gnn_run', type=int, default=1)
 parser.add_argument('--explainer_run', type=int, default=1)
 parser.add_argument('--gnn_type', type=str, default='gcn', choices=['gcn', 'gat', 'gin', 'sage'])
-parser.add_argument('--epochs', type=int, default=20)
+parser.add_argument('--epochs', type=int, default=5) # 20
 parser.add_argument('--robustness', type=str, default='na', choices=['topology_random', 'topology_adversarial', 'feature', 'na'], help="na by default means we do not run for perturbed data")
 
 
@@ -187,6 +187,8 @@ device = torch.device(f'cuda:{args.device}' if torch.cuda.is_available() else 'c
 from recbole.config import Config
 config = Config(model=args.model, dataset=args.dataset, config_file_list=args.config_file_list, config_dict=args.config_dict)
 config['data_path'] = os.path.join(config.file_config_dict['data_path'], config.dataset)
+# print data path and config path
+print(config['data_path'])
 # start training by first loading the dataset
 from data.dataset import Dataset
 dataset = Dataset(config)
@@ -197,9 +199,34 @@ train_data, valid_data, test_data = data_preparation(config, dataset)
 
 
 # Then model loading
-# model = get
+from recbole.utils import init_seed, init_logger, set_color, get_trainer, get_model, get_local_time
+model = get_model(config['model'])(config, train_data._dataset).to(config['device'])
+# LightGCN(
+#   (user_embedding): Embedding(269, 64)
+#   (item_embedding): Embedding(51610, 64)
+#   (mf_loss): BPRLoss()
+#   (reg_loss): EmbLoss()
+# )
 
-dataset = data_utils.load_dataset(args.dataset)
+# Trainer loading and initialization
+trainer = get_trainer(config['MODEL_TYPE'], config['model'])(config, model)
+
+split_saved_file = os.path.basename(trainer.saved_model_file).split('-')
+trainer.saved_model_file = os.path.join(
+    os.path.dirname(trainer.saved_model_file),
+    '-'.join(split_saved_file[:1] + [dataset.dataset_name.upper()] + split_saved_file[1:])
+        )
+
+hyper = False # currently set to false
+best_valid_score, best_valid_result = trainer.fit(
+train_data,
+valid_data,
+saved=True, # currently set to true
+show_progress = config['show_progress'] and not hyper,
+verbose=not hyper
+)
+
+# dataset = data_utils.load_dataset(args.dataset)
 splits, indices = data_utils.split_data(dataset)
 
 torch.manual_seed(args.explainer_run)

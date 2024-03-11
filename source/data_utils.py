@@ -51,7 +51,7 @@ class LastFM(InMemoryDataset):
         y: torch.tensor = torch.tensor(y, dtype=torch.long)
 
         data = Data(x=x, edge_index=edge_index, y=y)
-        data, slices = lastFM.collate([data])
+        data, slices = LastFM.collate([data])
 
         return data, slices
 

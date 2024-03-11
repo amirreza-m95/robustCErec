@@ -1,4 +1,4 @@
-epochs: 100
+epochs: 5 #100
 # 'USER_ID_FIELD': user_id,
 # 'ITEM_ID_FIELD': item_id,
 TIMESTAMP_FIELD: 'timestamp'
