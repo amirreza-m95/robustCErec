@@ -1157,7 +1157,7 @@ class REDDITPreTransform(object):
         return data
 
 
-def load_dataset(dataset_name, root='data/'):
+def load_dataset(dataset_name, root='../data/'):
     if dataset_name == 'Mutagenicity':
         data = TUDataset(root=root, name='Mutagenicity', use_node_attr=True)
     elif "MutagenicityNoisy" in dataset_name:
