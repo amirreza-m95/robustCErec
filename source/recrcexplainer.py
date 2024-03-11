@@ -240,14 +240,16 @@ explanations_path = os.path.join(result_folder, f'explanations_{args.gnn_type}_r
 counterfactuals_path = os.path.join(result_folder, f'counterfactuals_{args.gnn_type}_run_{args.explainer_run}.pt')
 args.method = 'classification'
 
-trainer = GNNTrainer(dataset_name=args.dataset, gnn_type=args.gnn_type, task='basegnn', device=args.device)
-model = trainer.load(args.gnn_run)
+# trainer = GNNTrainer(dataset_name=args.dataset, gnn_type=args.gnn_type, task='basegnn', device=args.device)
+# model = trainer.load(args.gnn_run)
 for param in model.parameters():
     param.requires_grad = False
 model.eval()
 
-node_embeddings, graph_embeddings, outs = trainer.load_gnn_outputs(args.gnn_run)
-preds = torch.argmax(outs, dim=-1)
+# node_embeddings, graph_embeddings, outs = trainer.load_gnn_outputs(args.gnn_run)
+test_result = trainer.evaluate(test_data, load_best_model=True)
+# preds = torch.argmax(outs, dim=-1)
+print("Test result: ", test_result)
 
 train_indices = indices[0]
 val_indices = indices[1]

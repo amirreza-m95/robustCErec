@@ -40,14 +40,14 @@ class LastFM(InMemoryDataset):
         return ['data.pt']
 
     @staticmethod
-    def read_lastFM_data(folder: str, prefix: str):
-        with open(os.path.join(folder, prefix + "_node_features.pkl"), 'rb') as f:
+    def read_lastFM_data(folder: str):
+        with open(os.path.join(folder, "_node_features.pkl"), 'rb') as f:
             x: np.array = pickle.load(f)
         x: torch.FloatTensor = torch.from_numpy(x)
-        edge_index: np.array = np.load(os.path.join(folder, prefix + "_edge_index.npy"))
+        edge_index: np.array = np.load(os.path.join(folder, "_edge_index.npy"))
         edge_index: torch.tensor = torch.tensor(edge_index, dtype=torch.long).T
-        batch: np.array = np.load(os.path.join(folder, prefix + "_node_indicator.npy")) - 1  # from zero
-        y: np.array = np.load(os.path.join(folder, prefix + "_graph_labels.npy"))
+        batch: np.array = np.load(os.path.join(folder, "_node_indicator.npy")) - 1  # from zero
+        y: np.array = np.load(os.path.join(folder, "_graph_labels.npy"))
         y: torch.tensor = torch.tensor(y, dtype=torch.long)
 
         data = Data(x=x, edge_index=edge_index, y=y)
