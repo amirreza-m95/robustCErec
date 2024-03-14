@@ -67,6 +67,14 @@ def get_rce_format(data, node_embeddings):
 #     Updates idx2rule, a dictionary mapping indices to rules.
 #     Appends the extracted rule and its coverage information to lists for later use.
 #     Marks the data points covered by the extracted rule to avoid redundant processing.
+
+# Extract rules based on the ranked list of related items for each item
+
+# Evaluate the extracted rules based on the positions of related items within the ranked lists
+
+# Save information about the extracted rules
+
+# Update the idx2rule mapping
 def extract_rules(model, train_data, preds, embs, device, pool_size=50):
     I = 36
     length = 2
@@ -286,7 +294,7 @@ if os.path.exists(rule_path):
 else:
     concatenated_embeddings = torch.cat((user_embeddings, item_embeddings), dim=0)
     graph_embeddings=concatenated_embeddings
-    rule_dict = extract_rules(model, dataset, preds, graph_embeddings, device, pool_size=min([100, (preds == 1).sum().item(), (preds == 0).sum().item()]))
+    rule_dict = extract_rules(model, dataset, preds, graph_embeddings, device, pool_size=50) # min([100, (preds == 1).sum().item(), (preds == 0).sum().item()])
     np.save(rule_path, rule_dict)
 
 # setting seed again because of rule extraction
