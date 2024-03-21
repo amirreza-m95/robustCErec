@@ -76,6 +76,21 @@ def get_rce_format(data, node_embeddings):
 
 # Update the idx2rule mapping
 def extract_rules(model, train_data, preds, embs, device, pool_size=50):
+    """
+    Extracts rules from a given model using the provided training data, predictions, embeddings, and device.
+
+    Args:
+        model (torch.nn.Module): The model from which to extract rules.
+        train_data (torch.Tensor): The training data used to train the model.
+        preds (torch.Tensor): The predictions made by the model on the training data.
+        embs (torch.Tensor): The embeddings of the training data.
+        device (torch.device): The device on which the model and data are located.
+        pool_size (int, optional): The size of the candidate pool. Defaults to 50.
+
+    Returns:
+        dict: A dictionary containing the extracted rules and their corresponding indices.
+
+    """
     I = 36
     length = 2
     is_graph_classification = True
