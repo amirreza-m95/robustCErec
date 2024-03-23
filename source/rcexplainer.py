@@ -98,7 +98,7 @@ def extract_rules(model, train_data, preds, embs, device, pool_size=50):
 
         # saving info for gnnexplainer
         rule_dict = {}
-        inv_bbs = inv_classifier._bb.bb
+        inv_bbs = inv_classifier._bb.bb # [21,100] for Mutagenicity dataset
 
         inv_invariant = inv_classifier._invariant
         boundaries_info = []

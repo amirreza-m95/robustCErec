@@ -8,6 +8,7 @@ from methods.mine_gcn_invariant import SubmodularMinerAG, InvariantClassifierGlb
 
 
 class Struct_BB():
+    # Initialization: The class can be initialized with optional basis_ and bias_ arrays. If both are provided, they are concatenated to form the initial bounding box (self.bb). If only one is provided, an assertion ensures that the other is not provided.
     def __init__(self, basis_=None, bias_=None):
         self.bb = None
 
@@ -16,7 +17,7 @@ class Struct_BB():
         else:
             assert (basis_ is not None)
             self.importBB(basis_, bias_)
-
+# Importing Bounding Box: The importBB method allows importing additional basis and bias arrays, concatenating them to the existing bounding box.
     def importBB(self, basis_, bias_):
         assert (isinstance(basis_, np.ndarray))
         assert (isinstance(bias_, np.ndarray))
@@ -28,7 +29,7 @@ class Struct_BB():
         else:
             new_bb = np.concatenate((basis_, bias_.reshape(1, -1)), axis=0)
             self.bb = np.concatenate((self.bb, new_bb), axis=1)
-
+# Extending Bounding Box: The extendBB method allows extending the bounding box by concatenating another Struct_BB object's bounding box.
     def extendBB(self, struct_bb_):
         assert (isinstance(struct_bb_, Struct_BB))
         if self.bb is None:
@@ -36,6 +37,7 @@ class Struct_BB():
         else:
             self.bb = np.concatenate((self.bb, struct_bb_.bb), axis=1)
 
+# Accessing Bias and Basis Arrays: Methods like getBiasArray, getBasisArray, and getBBArray provide access to the bias, basis, and complete bounding box arrays, respectively.
     def getBiasArray(self):
         return self.bb[-1, :]
 
@@ -46,6 +48,7 @@ class Struct_BB():
         return self.bb
 
     # userful for extracting bb for pooling layers and last layer
+    # Subtraction Over Others: The subPivotOverOthers method performs a subtraction operation on the bounding box columns specified by pivot_id1_ and pivot_id2_.
     def subPivotOverOthers(self, pivot_id1_, pivot_id2_):
         # self.bb = self.bb[:, pivot_id_:pivot_id_+1] - self.bb
         # self.bb = np.delete(self.bb, pivot_id_, axis=1)
@@ -56,7 +59,7 @@ class Struct_BB():
             return 0
         else:
             return self.getBiasArray().shape[0]
-
+# Computing Hash Values and Configurations: Methods like computeHashVal and computeConfigs compute hash values and configurations based on the provided feature arrays and the bounding box.
     def computeHashVal(self, array_features_):
         assert (isinstance(array_features_, np.ndarray))
 
@@ -212,7 +215,7 @@ class RuleMinerLargeCandiPool():
 
     def getInvariantClassifier(self, tgt_idx_, feature, label, org_train_labels_, delta_constr_=0, peel_mask_=None):  # tgt_idx_ is probably not used
         train_configs = self._train_configs
-
+    # Configuration Comparison: It compares the configurations of the training samples with the target configuration (tgt_config) derived from the provided feature.
         feature = feature.flatten()
         feature = feature[np.newaxis, :]
         tgt_config = self._bb.computeConfigs(feature)
@@ -229,20 +232,20 @@ class RuleMinerLargeCandiPool():
 
         match_mat_f = (train_configs[indi_f, :] - tgt_config == 0)
         match_mat_g = (train_configs[indi_g, :] - tgt_config == 0)
-
+    # Submodular Mining: It utilizes a SubmodularMinerAG object to mine for invariants based on the matching matrices match_mat_f and match_mat_g, which are derived from the configuration comparisons.
         submodu_miner = SubmodularMinerAG(match_mat_f, match_mat_g, np.where(indi_f), np.where(indi_g), False)
         invariant, f_val, g_val = submodu_miner.mineInvariant(delta_constr_=delta_constr_)
-
+        # Covered Indices: It obtains indices of covered instances based on the mined invariant.
         cover_indi = self._getCoveredIndi(invariant, tgt_config[invariant])
-
+        # Data Subset Extraction: It extracts a subset of the original training data and labels (org_train_subdata, org_train_sublabels) based on the covered indices.
         org_train_subdata = self._train_embs.float().reshape(self._train_embs.size(0), -1).cpu().numpy()[cover_indi, :]
         org_train_sublabels = org_train_labels_[cover_indi]
-
+        # Invariant Classifier Construction: It constructs an invariant classifier (inv_classifier) using the mined invariant, along with other relevant parameters.
         array_features = self._train_embs.float().reshape(self._train_embs.size(0), -1).cpu().numpy()
         inv_classifier = InvariantClassifierGlb(self._bb, invariant, f_val, g_val, tgt_config, tgt_label,
                                                 org_train_subdata, org_train_sublabels,
                                                 array_features[tgt_idx_, :], self._layer_start, self._model)
-
+        # Updating Lists: It updates lists (boundary_list_update, opposite_list_update, initial_list_update) based on the mined invariant.
         boundary_list_update = []
         opposite_list_update = []
         initial_list_update = []
@@ -251,7 +254,7 @@ class RuleMinerLargeCandiPool():
                 boundary_list_update.append(self._boundary_list[i])
                 opposite_list_update.append(self._opposite_list[i])
                 initial_list_update.append(self._initial_list[i])
-
+        # Return: It returns the constructed invariant classifier along with the updated lists.
         return inv_classifier, boundary_list_update, opposite_list_update, initial_list_update
 
 
@@ -263,25 +266,25 @@ def evalSingleRule(inv_classifier, data, embs, preds):
 
 
 def _getBBOfLastLayer(model, device, input):
-    # prepare the buffer
+    # prepare the buffer -> Initialization: The function initializes lists to store the basis and bias of each unit in the last layer of the model.
     basis_list = []
     bias_list = []
     layer_ptr = -1
 
-    # set true grad flag for input
+    # set true grad flag for input -> Setting Gradient Flag: It sets the requires_grad flag of the input tensor to True, indicating that gradients should be computed with respect to this input.
     input.requires_grad_(True)
-
+    # Forward Pass: It performs a forward pass through the model's fully connected layer (model.fc) using the input tensor.
     out_of_layer = model.fc(input)
 
     out_of_layer = out_of_layer.reshape(out_of_layer.size(0), -1)
-
+    # Backward Pass and Gradient Computation: For each unit in the last layer, it computes the gradient of the output with respect to the input. This gradient represents the basis of that unit.
     model.zero_grad()
     model.eval()
     for idx in range(out_of_layer.size(1)):
         unit_mask = torch.zeros(out_of_layer.size())
         unit_mask[:, idx] = 1
         unit_mask = unit_mask.to(device)
-
+        # It then computes the bias by subtracting the dot product of the input and the gradient from the unit's output.
         # compute basis of this unit
         out_of_layer.backward(unit_mask, retain_graph=True)
         basis = input.grad.clone().detach().reshape(input.size(0), -1)
@@ -294,13 +297,13 @@ def _getBBOfLastLayer(model, device, input):
         bias = out_of_layer[:, idx].clone().detach() - basis_mul_x
         bias_list.append(bias)
 
-        # clean up
+        # clean up -> It zeros out gradients and resets the requires_grad flag of the input tensor to False after gradient computations are done.
         model.zero_grad()
         input.grad.data.zero_()
 
     # set false grad flag for input
     input.requires_grad_(False)
-
+    # Stacking and Reshaping: It stacks the computed basis and bias tensors and converts them to NumPy arrays.
     # reshape basis to tensor shape
     stacked_basis = torch.stack(basis_list, dim=2)
     array_basis = stacked_basis.detach().squeeze().cpu().numpy()
@@ -308,10 +311,10 @@ def _getBBOfLastLayer(model, device, input):
     # reshape bias to tensor shape
     stacked_bias = torch.stack(bias_list, dim=1)
     array_bias = stacked_bias.detach().squeeze().cpu().numpy()
-
+    # Creating Bounding Box Object: It initializes a Struct_BB object (presumably representing a bounding box) using the computed basis and bias arrays.
     # bb_of_logits = self._getBBOfOneLayer(input, -1, layer_start)
     bb_of_logits = Struct_BB(array_basis, array_bias)
-
+    # Identifying Pivot Logits: It computes the hash values (logits) using the input tensor and the bounding box object. Then, it identifies the indices of the two largest logits, which are likely to be the pivot indices for later subtraction.
     # identify the idx of the pivot logit
     logits = bb_of_logits.computeHashVal(input.reshape(input.size(0), -1).cpu().numpy())
     assert (logits.shape[0] == 1)
@@ -322,7 +325,7 @@ def _getBBOfLastLayer(model, device, input):
     pivot_id2 = logits_order[-2]
 
     # pivot_id = np.argmax(logits)
-
+    # Subtraction to Get Bounding Box: It subtracts the basis and bias of the pivot logits from the basis and bias of other logits to obtain the bounding box of the last layer.
     # subtract between the logits to get BB_of_last_layer
     bb_of_logits.subPivotOverOthers(pivot_id1, pivot_id2)
 
