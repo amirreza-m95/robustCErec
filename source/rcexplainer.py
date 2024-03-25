@@ -93,18 +93,18 @@ def extract_rules(model, train_data, preds, embs, device, pool_size=50):
         # Perform rule extraction
         array_labels = preds.long().cpu().numpy()  # train_data_upt._getArrayLabels()
         inv_classifier, pivots, opposite, initial = rule_miner_train.getInvariantClassifier(i, feature.cpu().numpy(), preds[i].cpu(), array_labels, delta_constr_=0)
-        pivots_list.append(pivots)
-        opposite_list.append(opposite)
+        pivots_list.append(pivots) # pivots are the basis of the rule 
+        opposite_list.append(opposite) # opposite is the label
 
         # saving info for gnnexplainer
         rule_dict = {}
         inv_bbs = inv_classifier._bb.bb # [21,100] for Mutagenicity dataset
 
-        inv_invariant = inv_classifier._invariant
+        inv_invariant = inv_classifier._invariant # label [100,] for Mutagenicity dataset
         boundaries_info = []
         b_count = 0
         assert (len(opposite) == np.sum(inv_invariant))
-        for inv_ix in range(inv_invariant.shape[0]):
+        for inv_ix in range(inv_invariant.shape[0]): # 100 for Mutagenicity dataset
             if inv_invariant[inv_ix] == False:
                 continue
             boundary_dict = {}
