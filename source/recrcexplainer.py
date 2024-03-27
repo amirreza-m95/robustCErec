@@ -75,6 +75,7 @@ def get_rce_format(data, node_embeddings):
 # Save information about the extracted rules
 
 # Update the idx2rule mapping
+
 def extract_rules(model, train_data, preds, embs, device, pool_size=50):
     """
     Extracts rules from a given model using the provided training data, predictions, embeddings, and device.
@@ -101,7 +102,7 @@ def extract_rules(model, train_data, preds, embs, device, pool_size=50):
     check_repeat = np.repeat(False, len(train_data))
     rule_dict_list = []
     idx2rule = {}
-    _pred_labels = preds.cpu().numpy()
+    _pred_labels = torch.tensor(preds).cpu().numpy()
     num_classes = 2
     iter = 0
     for i in range(len(preds)):
@@ -178,6 +179,10 @@ def extract_rules(model, train_data, preds, embs, device, pool_size=50):
     return rule_dict_save
 
 
+# Rest of the code remains the same
+# ...
+# ...
+# ...
 parser = argparse.ArgumentParser()
 
 parser.add_argument('--lr', default=0.001, type=float)
@@ -285,14 +290,14 @@ test_result = trainer.evaluate(test_data, load_best_model=True)
 
 user_embeddings = trainer.model.user_embedding.weight.data
 item_embeddings = trainer.model.item_embedding.weight.data
-preds = {}
+preds = []
 for user_id in test_data:
     user_emb = user_embeddings[user_id[0]['user_id']]
     # Compute cosine similarity between user and all items
     # similarity_scores = torch.matmul(item_embeddings, user_emb.unsqueeze(1)).squeeze(1)
     similarity_scores = F.cosine_similarity(item_embeddings, user_emb.unsqueeze(0), dim=-1)
-    top_items = torch.topk(similarity_scores, k=10).indices.tolist()
-    preds[user_id[0]['user_id']] = top_items
+    top_items = torch.topk(similarity_scores, k=10).indices.tolist()[0]
+    preds.append(top_items)
 # preds = torch.argmax(outs, dim=-1)
 print("Test result: ", test_result)
 

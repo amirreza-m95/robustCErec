@@ -105,7 +105,7 @@ class RuleMinerLargeCandiPool():
         self._model = model_
         self._train_mdata = train_mdata_
         self._train_labels = train_preds_
-        self._train_embs = train_embs_
+        self._train_embs = train_embs_ # [51879, 64]
         self.device = device
 
         # The class of the seed image is considered positive
