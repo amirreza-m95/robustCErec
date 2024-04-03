@@ -178,11 +178,23 @@ def extract_rules(model, train_data, preds, embs, device, pool_size=50):
     rule_dict_save['idx2rule'] = idx2rule
     return rule_dict_save
 
+def create_subgraphs_3_hops_away(graph):
+    subgraphs = []
+    for node in graph.nodes:
+        # Find all nodes 3 hops or fewer away from the current node
+        nodes_within_3_hops = nx.single_source_shortest_path_length(graph, node, cutoff=1)
+        
+        # Extract the nodes (ignoring the distance, hence the .keys())
+        nodes = list(nodes_within_3_hops.keys())
+        
+        # Create a subgraph with these nodes
+        subgraph = graph.subgraph(nodes)
+        
+        subgraphs.append(subgraph)
+        
+    return subgraphs
 
-# Rest of the code remains the same
-# ...
-# ...
-# ...
+
 parser = argparse.ArgumentParser()
 
 parser.add_argument('--lr', default=0.001, type=float)
@@ -216,7 +228,7 @@ parser.add_argument('--config_dict', default=None)
 
 args = parser.parse_args()
 
-# Logging.
+# Logging.-----------------------------------
 result_folder = f'data/{args.dataset}/rcexplainer_{args.lambda_}/'
 if not os.path.exists(result_folder):
     os.makedirs(result_folder)
@@ -236,8 +248,25 @@ dataset = Dataset(config)
 from recbole.data import data_preparation
 train_data, valid_data, test_data = data_preparation(config, dataset)
 
+# 3hop subgraph extraction
+import networkx as nx
+interaction_data = dataset.inter_feat
+user_ids = interaction_data['user_id'].numpy()
+item_ids = interaction_data['item_id'].numpy()
+# edges = list(zip(user_ids, item_ids))
+edges = [(f'u{user_id}', f'i{item_id}') for user_id, item_id in zip(user_ids, item_ids)]
 
-# Then model loading
+G = nx.Graph()
+G.add_edges_from(edges)
+from networkx.algorithms import bipartite
+assert bipartite.is_bipartite(G), "The graph is not bipartite"
+
+# Extract 3-hop subgraphs for each node
+subgraphs = create_subgraphs_3_hops_away(G)
+
+
+
+# Then model loading----------------------------
 from recbole.utils import init_seed, init_logger, set_color, get_trainer, get_model, get_local_time
 model = get_model(config['model'])(config, train_data._dataset).to(config['device'])
 # LightGCN(
@@ -287,22 +316,35 @@ model.eval()
 
 # node_embeddings, graph_embeddings, outs = trainer.load_gnn_outputs(args.gnn_run)
 test_result = trainer.evaluate(test_data, load_best_model=True)
+print("Test result: ", test_result)
 
 user_embeddings = trainer.model.user_embedding.weight.data
 item_embeddings = trainer.model.item_embedding.weight.data
 preds = []
+preds30 = []
 for user_id in test_data:
     user_emb = user_embeddings[user_id[0]['user_id']]
     # Compute cosine similarity between user and all items
     # similarity_scores = torch.matmul(item_embeddings, user_emb.unsqueeze(1)).squeeze(1)
     similarity_scores = F.cosine_similarity(item_embeddings, user_emb.unsqueeze(0), dim=-1)
     top_items = torch.topk(similarity_scores, k=10).indices.tolist()[0]
+    top30_items = torch.topk(similarity_scores, k=30).indices.tolist()[0]
     preds.append(top_items)
-# preds = torch.argmax(outs, dim=-1)
-print("Test result: ", test_result)
+    preds30.append(top30_items)
+    # preds = torch.argmax(outs, dim=-1)
+
+# add labels to subgraphs and modify them to contain node preds
+for i, subgraph in enumerate(subgraphs):
+    
+    subgraph.graph['label'] = 1
+    subgraph.nodes['label'] = torch.tensor(preds[i])
+    subgraph.nodes['pred'] = torch.tensor(preds[i])
+    subgraphs[i] = subgraph
 
 train_indices = indices[0]
 val_indices = indices[1]
+
+
 
 # rule extraction
 rule_folder = f'rcexplainer_rules/'
