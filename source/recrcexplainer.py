@@ -334,12 +334,12 @@ for user_id in test_data:
     # preds = torch.argmax(outs, dim=-1)
 
 # add labels to subgraphs and modify them to contain node preds
-for i, subgraph in enumerate(subgraphs):
+# for i, subgraph in enumerate(subgraphs):
     
-    subgraph.graph['label'] = 1
-    subgraph.nodes['label'] = torch.tensor(preds[i])
-    subgraph.nodes['pred'] = torch.tensor(preds[i])
-    subgraphs[i] = subgraph
+#     subgraph.graph['label'] = 1
+#     subgraph.nodes['label'] = torch.tensor(preds[i])
+#     subgraph.nodes['pred'] = torch.tensor(preds[i])
+#     subgraphs[i] = subgraph
 
 train_indices = indices[0]
 val_indices = indices[1]
