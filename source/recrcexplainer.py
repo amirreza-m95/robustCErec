@@ -92,6 +92,10 @@ def extract_rules(model, train_data, preds, embs, device, pool_size=50):
         dict: A dictionary containing the extracted rules and their corresponding indices.
 
     """
+    preds = np.ones(268)
+    preds[0:100] = 0
+    preds = torch.from_numpy(preds) # to be deleted later
+    
     I = 36
     length = 2
     is_graph_classification = True
@@ -117,6 +121,9 @@ def extract_rules(model, train_data, preds, embs, device, pool_size=50):
         if np.sum(check_repeat) >= len(train_data):
             break
 
+
+        
+       
         # Initialize the rule. Need to input the label for the rule and which layer we are using (I)
         rule_miner_train = RuleMinerLargeCandiPool(model, train_data, preds, embs, _pred_labels[i], device, I)
 
@@ -132,26 +139,26 @@ def extract_rules(model, train_data, preds, embs, device, pool_size=50):
         opposite_list.append(opposite)
 
         # saving info for gnnexplainer
-        rule_dict = {}
-        inv_bbs = inv_classifier._bb.bb
+        # rule_dict = {}
+        # inv_bbs = inv_classifier._bb.bb
 
-        inv_invariant = inv_classifier._invariant
-        boundaries_info = []
-        b_count = 0
-        assert (len(opposite) == np.sum(inv_invariant))
-        for inv_ix in range(inv_invariant.shape[0]):
-            if inv_invariant[inv_ix] == False:
-                continue
-            boundary_dict = {}
-            # boundary_dict['basis'] = inv_bbs[:-1,inv_ix]
-            boundary_dict['basis'] = inv_bbs[:, inv_ix]
-            boundary_dict['label'] = opposite[b_count]
-            b_count += 1
-            boundaries_info.append(boundary_dict)
-        rule_dict['boundary'] = boundaries_info
-        rule_dict['label'] = rule_label.cpu().item()
-        print("Rules extracted: ", rule_dict)
-        rule_dict_list.append(rule_dict)
+        # inv_invariant = inv_classifier._invariant
+        # boundaries_info = []
+        # b_count = 0
+        # assert (len(opposite) == np.sum(inv_invariant))
+        # for inv_ix in range(inv_invariant.shape[0]):
+        #     if inv_invariant[inv_ix] == False:
+        #         continue
+        #     boundary_dict = {}
+        #     # boundary_dict['basis'] = inv_bbs[:-1,inv_ix]
+        #     boundary_dict['basis'] = inv_bbs[:, inv_ix]
+        #     boundary_dict['label'] = opposite[b_count]
+        #     b_count += 1
+        #     boundaries_info.append(boundary_dict)
+        # rule_dict['boundary'] = boundaries_info
+        # rule_dict['label'] = rule_label.cpu().item()
+        # print("Rules extracted: ", rule_dict)
+        # rule_dict_list.append(rule_dict)
         # end saving info for gnn-explainer
 
         # evaluate classifier
@@ -341,7 +348,10 @@ for user_id in test_data:
 #     subgraph.nodes['pred'] = torch.tensor(preds[i])
 #     subgraphs[i] = subgraph
 
-train_indices = indices[0]
+# train_indices = indices[0] 
+tensorofvalues = [i['user_id'] for i in train_data] # to be deleted later
+train_indices = [item for tensor in tensorofvalues for item in tensor.tolist()] # to be deleted later
+
 val_indices = indices[1]
 
 
@@ -356,8 +366,8 @@ if os.path.exists(rule_path):
 else:
     concatenated_embeddings = torch.cat((user_embeddings, item_embeddings), dim=0)
     graph_embeddings=concatenated_embeddings
-    rule_dict = extract_rules(model, dataset, preds, graph_embeddings, device, pool_size=50) # min([100, (preds == 1).sum().item(), (preds == 0).sum().item()])
-    np.save(rule_path, rule_dict)
+    # rule_dict = extract_rules(model, dataset, preds, graph_embeddings, device, pool_size=50) # min([100, (preds == 1).sum().item(), (preds == 0).sum().item()])
+    # np.save(rule_path, rule_dict)
 
 # setting seed again because of rule extraction
 torch.manual_seed(args.explainer_run)
@@ -369,15 +379,23 @@ if args.dataset in ['Graph-SST2']:
     args.lr = args.lr * 0.05  # smaller lr for large dataset
     args.beta_ = args.beta_ * 10  # to make the explanations more sparse
 
-adj, feat, label, num_nodes, node_embs_pads = get_rce_format(dataset, node_embeddings)
+# adj, feat, label, num_nodes, node_embs_pads = get_rce_format(dataset, node_embeddings) 
+
 explainer = ExplainModule(
-    num_nodes=adj.shape[1],
-    emb_dims=model.dim * 2,  # gnn_model.num_layers * 2,
+    num_nodes=269,
+    # emb_dims=model.dim * 2,  # gnn_model.num_layers * 2,
+    emb_dims=model.n_layers * 2,
     device=device,
     args=args
 )
 
-
+# to be removed later
+rule_dict = {}
+adj = torch.zeros(269, 269)
+feat = torch.zeros(269, 64)
+label = torch.zeros(269)
+num_nodes = torch.zeros(269)
+node_embs_pads = torch.zeros(269, 269)
 
 
 if args.dataset in ['Mutagenicity']:

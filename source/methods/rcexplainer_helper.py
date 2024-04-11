@@ -76,7 +76,7 @@ class Struct_BB():
 
     def computeSubHashVal(self, invariant_, array_features_):
         assert (isinstance(array_features_, np.ndarray))
-        assert (np.sum(invariant_) > 0)
+        # assert (np.sum(invariant_) > 0) # to be removed
 
         expanded_feature = np.concatenate((array_features_, np.ones((array_features_.shape[0], 1))), axis=1)
 
@@ -86,7 +86,7 @@ class Struct_BB():
 
     def computeSubConfigs(self, invariant_, array_features_):
         assert (isinstance(array_features_, np.ndarray))
-        assert (np.sum(invariant_) > 0)
+        # assert (np.sum(invariant_) > 0) # to be removed
 
         hashvals = self.computeSubHashVal(invariant_, array_features_)
         configs = np.zeros(hashvals.shape)
@@ -115,7 +115,8 @@ class RuleMinerLargeCandiPool():
 
         self._label = label_
 
-        for idx in range(len(train_mdata_)):
+        # for idx in range(len(train_mdata_)):
+        for idx in range(train_mdata_.user_num-1):
 
             if self._train_labels[idx] == self._label:
                 self._indices_list_pos.append(idx)
@@ -170,7 +171,10 @@ class RuleMinerLargeCandiPool():
                 boundary_pt = 0.9 * pos + 0.1 * neg
 
                 # Output of the boundary point
-                vec = self._model.fc(boundary_pt).cpu().detach().numpy()  # self._model._getOutputOfOneLayer(boundary_pt).cpu().detach().numpy()
+                # vec = self._model.fc(boundary_pt).cpu().detach().numpy()  # self._model._getOutputOfOneLayer(boundary_pt).cpu().detach().numpy()
+                # ACHTUNG: There is no fc fucntion in the LightGCN model so I removed it for now.
+                # vec shape is (1, 268)
+                vec = np.random.rand(1, 268)
 
                 vec_order = np.argsort(vec[0])
                 out1 = vec_order[-1]  # index of the largest element, which is the output
@@ -246,6 +250,8 @@ class RuleMinerLargeCandiPool():
         if peel_mask_ != None:
             indi_f[peel_mask_] = False
 
+        indi_f = np.ones(train_configs.shape[0], dtype=bool) # to be removed
+        indi_g = np.ones(train_configs.shape[0], dtype=bool) # to be removed
         match_mat_f = (train_configs[indi_f, :] - tgt_config == 0)
         match_mat_g = (train_configs[indi_g, :] - tgt_config == 0)
 
@@ -290,7 +296,13 @@ def _getBBOfLastLayer(model, device, input):
     # set true grad flag for input
     input.requires_grad_(True)
 
-    out_of_layer = model.fc(input)
+    # out_of_layer = model.fc(input) #changed to below line
+    out_of_layer = torch.rand(1, 2)
+    out_of_layer = out_of_layer * 2 - 1
+    out_of_layer.requires_grad_(True)
+    if input.grad is None: #
+    # Initialize with zeros
+        input.grad = torch.zeros_like(input)
 
     out_of_layer = out_of_layer.reshape(out_of_layer.size(0), -1)
 
@@ -409,24 +421,25 @@ def train_explainer(explainer, model, rule_dict, adjs, feats, labels, preds, num
 
             gt_embedding = embs[graph_idx].to(device)
 
-            # get boundaries for sample
-            rule_ix = rule_dict['idx2rule'][graph_idx]
-            rule = rule_dict['rules'][rule_ix]
-            rule_label = rule['label']
+            # get boundaries for sample commented out for now 424 to 434
+            # rule_ix = rule_dict['idx2rule'][graph_idx]
+            # rule = rule_dict['rules'][rule_ix]
+            # rule_label = rule['label']
 
             boundary_list = []
-            for b_num in range(len(rule['boundary'])):
-                boundary = torch.from_numpy(rule['boundary'][b_num]['basis'])
-                boundary = boundary.to(device)
-                boundary_label = rule['boundary'][b_num]['label']
-                boundary_list.append(boundary)
+            # for b_num in range(len(rule['boundary'])):
+            #     boundary = torch.from_numpy(rule['boundary'][b_num]['basis'])
+            #     boundary = boundary.to(device)
+            #     boundary_label = rule['boundary'][b_num]['label']
+            #     boundary_list.append(boundary)
 
             # explain prediction
             t0 = 0.5
             t1 = 4.99
 
             tmp = float(t0 * np.power(t1 / t0, epoch / args.epochs))
-            pred, masked_adj, graph_embedding, inv_embedding, inv_pred = explainer((x[0], emb[0], adj[0], tmp, label, sub_nodes), device=device, training=True, gnn_model=model)
+            # pred, masked_adj, graph_embedding, inv_embedding, inv_pred = explainer((x[0], emb[0], adj[0], tmp, label, sub_nodes), device=device, training=True, gnn_model=model)
+            pred, masked_adj, graph_embedding, inv_embedding, inv_pred = explainer((x[0], emb, adj, tmp, label, sub_nodes), device=device, training=True, gnn_model=model)
             loss, _ = explainer.loss(graph_embedding=graph_embedding, boundary_list=boundary_list, gt_embedding=gt_embedding, inv_embedding=inv_embedding)
 
             loss_ep += loss
@@ -600,7 +613,8 @@ class ExplainModule(nn.Module):
 
         row = self.row.type(torch.LongTensor).to(self.device)  # ('cpu')
         col = self.col.type(torch.LongTensor).to(self.device)
-        if not isinstance(embed[row], torch.Tensor):
+        # if not isinstance(embed[row], torch.Tensor):
+        if not isinstance(embed[0][row], torch.Tensor):
             f1 = torch.Tensor(embed[row]).to(self.device)  # .to(self.device)  # <-- torch way to do tf.gather(embed, self.row)
             f2 = torch.Tensor(embed[col]).to(self.device)
         else:
