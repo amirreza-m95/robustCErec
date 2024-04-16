@@ -392,14 +392,18 @@ def train_explainer(explainer, model, rule_dict, adjs, feats, labels, preds, num
 
     epoch = -1
     best_val_loss = float('inf')
-    patience = max(int(args.epochs / 5), 5)
+    patience = max(int(args.epochs / 5), 5) 
     cur_patience = 0
+
+
+
+
     for epoch in tqdm(range(args.epochs)):
         loss_epoch = 0
 
         explainer.train()
         masked_adjs = []
-        for b, graph_idx in enumerate(train_indices):
+        for b, graph_idx in enumerate(train_indices): # why train_indices? it is so big around 160,468 this should be on user nodes not interactions!!
             optimizer.zero_grad()
 
             # preprocess inputs
@@ -539,6 +543,15 @@ def evaluator_explainer(explainer, model, rule_dict, adjs, feats, labels, preds,
 
 
 class ExplainModule(nn.Module):
+    """
+        Arguments: The __init__ method takes several parameters including num_nodes (the number of nodes in the graph), emb_dims (embedding dimensions), device (the computing device, e.g., CPU or GPU), and args (additional arguments).
+    Components:
+        elayers: A sequence of linear layers that transform the input features to outputs. It's structured to take a concatenated embedding of two nodes and process it through two linear layers with a ReLU activation in between.
+        row and col: These are used to create indices for constructing sparse matrices, likely for a graph structure where row and col represent the connectivity between nodes.
+        softmax: A Softmax layer for normalization, used later in processing.
+        mask_act: Specifies the activation function to be used on masks, set to 'sigmoid'.
+        coeffs: A dictionary holding coefficients for various penalties and adjustments in the loss function.
+    """
     def __init__(
             self,
             # model,
@@ -581,7 +594,9 @@ class ExplainModule(nn.Module):
             "weight_decay": 0,
             "sample_bias": 0
         }
-
+    """
+    Functionality: This method implements the concrete distribution sampling, useful in variational inference and relaxation of discrete variables for gradient-based optimization. It generates values based on the log probabilities (log_alpha), a temperature parameter (beta), and optionally includes bias adjustments.
+    """
     def concrete_sample(self, log_alpha, beta=1.0, training=True):
         """Uniform random numbers for the concrete distribution"""
 
@@ -597,6 +612,11 @@ class ExplainModule(nn.Module):
 
         return gate_inputs
 
+    """
+    Inputs: Takes various graph-related inputs like node features, embeddings, adjacency matrices, etc.
+    Graph Masking: Computes a mask using the concrete_sample method which is then used to modify the adjacency matrix, creating masked_adj (adjacency matrix after applying the mask) and inverse_masked_adj (its complement).
+    Data Preparation: Constructs graph data using PyTorch Geometric's Data and DataLoader for batch processing. It passes these through a GNN model (gnn_model) to compute embeddings and results for both the original and the modified graph structures.
+    """
     def forward(self, inputs, device=None, training=None, gnn_model=None):
         x, embed, adj, tmp, label, sub_nodes = inputs
         if not isinstance(x, torch.Tensor):
@@ -677,7 +697,10 @@ class ExplainModule(nn.Module):
         n_inv_embed, inv_embed, inv_res = gnn_model(next(iter(loader)), edge_weight=edge_weight.to(device))
 
         return res, masked_adj, g_embed, inv_embed, inv_res
-
+    """
+    Boundary Loss: This might involve comparing the embeddings against pre-defined boundaries to see if the embeddings adhere to certain desirable properties.
+    Size and Entropy Losses: These penalize the size of the mask and encourage entropy in the mask distribution, likely to ensure that the mask does not become trivial (all zeros or all ones).
+    """
     def loss(self, graph_embedding, boundary_list, gt_embedding, inv_embedding):
         boundary_loss = 0.
         if self.args.lambda_ > 0:
