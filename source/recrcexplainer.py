@@ -339,13 +339,16 @@ if __name__ == '__main__':
     # Create bipartite networkx graph --------------------------------------------
     BG = nx.Graph()
     nodes_set_user = [f'u{user_id}' for user_id in user_ids.unique()]
-    nodes_set_item = [f'u{item_id}' for item_id in item_ids.unique()]
+    nodes_set_item = [f'i{item_id}' for item_id in item_ids.unique()]
 
     BG.add_nodes_from(nodes_set_user, bipartite=0)
     BG.add_nodes_from(nodes_set_item, bipartite=1)
 
     edges = [(f'u{user_id}', f'i{item_id}') for user_id, item_id in zip(user_ids, item_ids)]
     BG.add_edges_from(edges)
+
+    # Getting the bipartite nodes with bipartite attribute 0
+    # bipartite_nodes_0 = {n for n, d in B.nodes(data=True) if d['bipartite'] == 0}
 
     from networkx.algorithms import bipartite
     assert bipartite.is_bipartite(BG), "The graph is not bipartite"
