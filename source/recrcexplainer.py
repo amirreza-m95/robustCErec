@@ -208,6 +208,65 @@ def parse_arguments():
     args = parser.parse_args()
     return args
 
+def count_unique_and_sorted_occurrences(tuples_list):
+    # Create a dictionary to store counts of unique second parts
+    second_part_counts = {}
+    
+    # Iterate through each tuple in the list
+    for tuple_item in tuples_list:
+        # Extract the second part of the tuple
+        second_part = tuple_item[1]
+        
+        # Increment the count for the second part in the dictionary
+        if second_part in second_part_counts:
+            second_part_counts[second_part] += 1
+        else:
+            second_part_counts[second_part] = 1
+    
+    # Sort the dictionary by values in descending order
+    sorted_occurrences = dict(sorted(second_part_counts.items(), key=lambda item: item[1], reverse=True))
+    
+    # Return the count of unique second parts and the sorted dictionary of occurrences
+    unique_count = len(sorted_occurrences)
+    return unique_count, sorted_occurrences
+
+# Define the model
+import torch.nn as nn
+class RecommendationModel(nn.Module):
+    def __init__(self, num_nodes):
+        super(RecommendationModel, self).__init__()
+        self.fc = nn.Linear(num_nodes, num_nodes, bias=False)
+
+    def forward(self, x):
+        return self.fc(x)
+    
+# Mask learning via gradient ascent
+def learn_mask(adj_matrix, epochs=50):
+    mask = torch.rand(adj_matrix.size(), requires_grad=True)
+    for epoch in range(epochs):
+        optimizer.zero_grad()
+        masked_adj = adj_matrix * mask
+        outputs = model(masked_adj)
+        loss = criterion(outputs, torch.eye(num_nodes))  # Example target: identity matrix for simplicity
+        loss.backward()
+        mask.data += 0.01 * mask.grad.data  # Gradient ascent on mask
+        mask.grad.zero_()
+    return mask.detach()
+
+# Generate counterfactuals by altering important connections
+def generate_counterfactual(user_index, mask, threshold=0.5):
+    important_edges = (mask[user_index] > threshold).nonzero(as_tuple=True)[0]
+    counterfactuals = []
+    for edge in important_edges:
+        original_value = adj_matrix[user_index, edge].clone()
+        # Flip the connection
+        adj_matrix[user_index, edge] = 1 - adj_matrix[user_index, edge]
+        # Predict with altered connection
+        altered_prediction = model(adj_matrix)
+        adj_matrix[user_index, edge] = original_value  # restore original graph
+        counterfactuals.append((edge, altered_prediction[user_index].detach()))
+    return counterfactuals
+
 if __name__ == '__main__':
     args = parse_arguments()
     device = torch.device(f'cuda:{args.device}' if torch.cuda.is_available() else 'cpu')
@@ -230,12 +289,11 @@ if __name__ == '__main__':
     train_indices = indices[0] # len 214
     val_indices = indices[1] # 26
 
-    # 3hop subgraph extraction
+    # 3hop subgraph extraction ---------------------------------------------------
     import networkx as nx
     interaction_data = dataset.inter_feat
     user_ids = interaction_data['user_id']
     item_ids = interaction_data['item_id']
-    # edges = list(zip(user_ids, item_ids))
     edges = [(f'u{user_id}', f'i{item_id}') for user_id, item_id in zip(user_ids, item_ids)]
 
     G = nx.Graph()
@@ -246,10 +304,10 @@ if __name__ == '__main__':
     # Extract 3-hop subgraphs for each node
     uniqueUserIds = [f'u{user_id}' for user_id in user_ids.unique()]
     subgraphs = create_subgraphs_3_hops_away(G, uniqueUserIds)
+    # ----------------------------------------------------------------------------
 
 
-
-    # Create bipartite networkx graph
+    # Create bipartite networkx graph --------------------------------------------
     BG = nx.Graph()
     nodes_set_user = [f'u{user_id}' for user_id in user_ids.unique()]
     nodes_set_item = [f'u{item_id}' for item_id in item_ids.unique()]
@@ -264,6 +322,7 @@ if __name__ == '__main__':
     assert bipartite.is_bipartite(BG), "The graph is not bipartite"
     weighted_projected_graph = bipartite.weighted_projected_graph(BG, nodes_set_user)
     # nx.get_edge_attributes(weighted_projected_graph, 'weight') #('u1', 'u109'): 7
+    # ----------------------------------------------------------------------------
 
 
     # from sklearn.model_selection import train_test_split
@@ -312,6 +371,7 @@ if __name__ == '__main__':
     user_embeddings = trainer.model.user_embedding.weight.data # torch.Size([269, 64])
     item_embeddings = trainer.model.item_embedding.weight.data # torch.Size([51610, 64])
     # adj = trainer.model.norm_adj_matrix[51879][51879]
+
     preds = []
     preds30 = []
     for user_id in test_data:
@@ -324,11 +384,11 @@ if __name__ == '__main__':
         preds.append(top_items)
         preds30.append(top30_items)
 
-        # Graph Embeddings
-        concatenated_embeddings = torch.cat((user_embeddings, item_embeddings), dim=0)
-        graph_embeddings=concatenated_embeddings
+    # Graph Embeddings
+    concatenated_embeddings = torch.cat((user_embeddings, item_embeddings), dim=0)
+    graph_embeddings=concatenated_embeddings
 
-        # setting seed again because of rule extraction
+    # setting seed again because of rule extraction
     # torch.manual_seed(args.explainer_run)
     # torch.cuda.manual_seed(args.explainer_run)
     # np.random.seed(args.explainer_run)
@@ -344,47 +404,65 @@ if __name__ == '__main__':
     args=args
     )
 
-    rule_dict = {}
-    adj = nx.adjacency_matrix(G) #.todense()
-    feat = torch.zeros(269, 64)
-    label = torch.zeros(269)
-    num_nodes = torch.zeros(269)
-    node_embs_pads = torch.zeros(269, 269)
+    adj_matrix = nx.adjacency_matrix(weighted_projected_graph).todense() # torch.Size([269, 269])
+    adj_matrix = torch.FloatTensor(adj_matrix) # changes to float because thinks that the values are between 0 and 1 for training -> should thinkg of a solultion for this
+    
+
+    num_nodes = len(weighted_projected_graph.nodes)
+    model = RecommendationModel(num_nodes)
+
+    # Loss and optimizer
+    criterion = nn.MSELoss()
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+
+    mask = learn_mask(adj_matrix, epochs=5)
+
+    user_index = 0
+    cf_examples = generate_counterfactual(user_index, mask, threshold=0.5)
+    print(cf_examples)
 
 
-    explainer, last_epoch = train_explainer(explainer, model, rule_dict, adj, feat, label, preds, 
-                                            num_nodes, graph_embeddings, node_embs_pads, args,
-                                            train_indices, val_indices, device)
-    all_loss, all_explanations = evaluator_explainer(explainer, model, rule_dict, adj, feat, label, preds, num_nodes, graph_embeddings, node_embs_pads, range(len(dataset)), device)
-    explanation_graphs = []
-    entered = 0
-    if (args.lambda_ != 0.0):
-        counterfactual_graphs = []
+    # rule_dict = {}
+    # adj = nx.adjacency_matrix(G) #.todense()
+    # feat = torch.zeros(269, 64)
+    # label = torch.zeros(269)
+    # num_nodes = torch.zeros(269)
+    # node_embs_pads = torch.zeros(269, 269)
 
-    for i, graph in enumerate(dataset):
-        entered += 1
-        explanation = all_explanations[i]
-        explanation_adj = torch.from_numpy(explanation[:graph.num_nodes][:, :graph.num_nodes])
-        edge_index = graph.edge_index
-        edge_weight = explanation_adj[[index[0] for index in graph.edge_index.T], [index[1] for index in graph.edge_index.T]]
 
-        if (args.lambda_ != 0.0):
-            d = Data(edge_index=edge_index.clone(), edge_weight=edge_weight.clone(), x=graph.x.clone(), y=graph.y.clone())
-            c = Data(edge_index=edge_index.clone(), edge_weight=(1 - edge_weight).clone(), x=graph.x.clone(), y=graph.y.clone())
-            explanation_graphs.append(d)
-            counterfactual_graphs.append(c)
-        else:
-            # print('A')
-            # added edge attributes to graphs, in order to take a forward pass with edge attributes and check if label changes for finding counterfactual explanation.
-            d = Data(edge_index=edge_index.clone(), edge_weight=edge_weight.clone(), x=graph.x.clone(), y=graph.y.clone(), edge_attr=graph.edge_attr.clone() if graph.edge_attr is not None else None)
-            c = Data(edge_index=edge_index.clone(), edge_weight=(1 - edge_weight).clone(), x=graph.x.clone(), y=graph.y.clone(), edge_attr=graph.edge_attr.clone() if graph.edge_attr is not None else None)
-            label = int(graph.y)
-            pred = model(d.to(args.device), d.edge_weight.to(args.device))[-1][0]
-            pred_cf = model(c.to(args.device), c.edge_weight.to(args.device))[-1][0]
-            explanation_graphs.append({
-                "graph": d.cpu(), "graph_cf": c.cpu(),
-                "label": label, "pred": pred.cpu(), "pred_cf": pred_cf.cpu()
-            })
+    # explainer, last_epoch = train_explainer(explainer, model, rule_dict, adj, feat, label, preds, 
+    #                                         num_nodes, graph_embeddings, node_embs_pads, args,
+    #                                         train_indices, val_indices, device)
+    # all_loss, all_explanations = evaluator_explainer(explainer, model, rule_dict, adj, feat, label, preds, num_nodes, graph_embeddings, node_embs_pads, range(len(dataset)), device)
+    # explanation_graphs = []
+    # entered = 0
+    # if (args.lambda_ != 0.0):
+    #     counterfactual_graphs = []
+
+    # for i, graph in enumerate(dataset):
+    #     entered += 1
+    #     explanation = all_explanations[i]
+    #     explanation_adj = torch.from_numpy(explanation[:graph.num_nodes][:, :graph.num_nodes])
+    #     edge_index = graph.edge_index
+    #     edge_weight = explanation_adj[[index[0] for index in graph.edge_index.T], [index[1] for index in graph.edge_index.T]]
+
+    #     if (args.lambda_ != 0.0):
+    #         d = Data(edge_index=edge_index.clone(), edge_weight=edge_weight.clone(), x=graph.x.clone(), y=graph.y.clone())
+    #         c = Data(edge_index=edge_index.clone(), edge_weight=(1 - edge_weight).clone(), x=graph.x.clone(), y=graph.y.clone())
+    #         explanation_graphs.append(d)
+    #         counterfactual_graphs.append(c)
+    #     else:
+    #         # print('A')
+    #         # added edge attributes to graphs, in order to take a forward pass with edge attributes and check if label changes for finding counterfactual explanation.
+    #         d = Data(edge_index=edge_index.clone(), edge_weight=edge_weight.clone(), x=graph.x.clone(), y=graph.y.clone(), edge_attr=graph.edge_attr.clone() if graph.edge_attr is not None else None)
+    #         c = Data(edge_index=edge_index.clone(), edge_weight=(1 - edge_weight).clone(), x=graph.x.clone(), y=graph.y.clone(), edge_attr=graph.edge_attr.clone() if graph.edge_attr is not None else None)
+    #         label = int(graph.y)
+    #         pred = model(d.to(args.device), d.edge_weight.to(args.device))[-1][0]
+    #         pred_cf = model(c.to(args.device), c.edge_weight.to(args.device))[-1][0]
+    #         explanation_graphs.append({
+    #             "graph": d.cpu(), "graph_cf": c.cpu(),
+    #             "label": label, "pred": pred.cpu(), "pred_cf": pred_cf.cpu()
+    #         })
 
 
     print('finished')
