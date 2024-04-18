@@ -230,6 +230,35 @@ def count_unique_and_sorted_occurrences(tuples_list):
     unique_count = len(sorted_occurrences)
     return unique_count, sorted_occurrences
 
+def filter_tuples_by_id(tuples_list, id_value):
+    filtered_tuples = [tuple_item for tuple_item in tuples_list if tuple_item[0] == id_value]
+    return filtered_tuples
+
+# Function to find all the connected items of two given nodes of users and then 
+# find the common items between them and 
+# check which of those common items have least connections with other users
+def find_least_connected_common_items(user_id1, user_id2, edges, unique_items, sortedValofConnections):
+    """
+    input varialbles description:
+    user_id1: the first user id
+    user_id2: the second user id
+    edges: the list of edges between users and items
+    unique_items: the unique items in the dataset
+    sortedValofConnections: the sorted dictionary of occurrences of items
+    """
+
+    # Find the connected items of the two given users
+    connected_items_user1 = [item_id for user_id, item_id in edges if user_id == user_id1]
+    connected_items_user2 = [item_id for user_id, item_id in edges if user_id == user_id2]
+    
+    # Find the common items between the two users
+    common_items = set(connected_items_user1).intersection(set(connected_items_user2))
+    
+    # Find the least connected item among the common items
+    least_connected_item = min(common_items, key=lambda item: sortedValofConnections[item])
+    
+    return least_connected_item
+
 # Define the model
 import torch.nn as nn
 class RecommendationModel(nn.Module):
@@ -322,6 +351,8 @@ if __name__ == '__main__':
     assert bipartite.is_bipartite(BG), "The graph is not bipartite"
     weighted_projected_graph = bipartite.weighted_projected_graph(BG, nodes_set_user)
     # nx.get_edge_attributes(weighted_projected_graph, 'weight') #('u1', 'u109'): 7
+    unique_items, sortedValofConnections = count_unique_and_sorted_occurrences(edges)
+    filterd_tuples = filter_tuples_by_id(edges, 'u1')
     # ----------------------------------------------------------------------------
 
 
