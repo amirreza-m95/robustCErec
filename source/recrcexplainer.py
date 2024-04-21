@@ -234,11 +234,11 @@ def filter_tuples_by_id(tuples_list, id_value):
     filtered_tuples = [tuple_item for tuple_item in tuples_list if tuple_item[0] == id_value]
     return filtered_tuples
 
-# Function to find all the connected items of two given nodes of users and then 
-# find the common items between them and 
-# check which of those common items have least connections with other users
 def find_least_connected_common_items(user_id1, user_id2, edges, unique_items, sortedValofConnections):
     """
+    Function to find all the connected items of two given nodes of users and then 
+    find the common items between them and check which of those common items have least connections with other users
+
     input varialbles description:
     user_id1: the first user id
     user_id2: the second user id
@@ -259,7 +259,7 @@ def find_least_connected_common_items(user_id1, user_id2, edges, unique_items, s
     
     return least_connected_item
 
-# Define the model
+
 import torch.nn as nn
 class RecommendationModel(nn.Module):
     def __init__(self, num_nodes):
@@ -295,6 +295,53 @@ def generate_counterfactual(user_index, mask, threshold=0.5):
         adj_matrix[user_index, edge] = original_value  # restore original graph
         counterfactuals.append((edge, altered_prediction[user_index].detach()))
     return counterfactuals
+
+class RecommenderSystem:
+    def __init__(self, config, train_data, valid_data, test_data):
+        self.config = config
+        self.train_data = train_data
+        self.valid_data = valid_data
+        self.test_data = test_data
+        self.device = config['device']
+        self.model = get_model(config['model'])(config, train_data._dataset).to(self.device)
+        self.trainer = get_trainer(config['MODEL_TYPE'], config['model'])(config, self.model)
+
+    def train_model(self):
+        # Set seeds for reproducibility
+        torch.manual_seed(self.config['seed'])
+        torch.cuda.manual_seed(self.config['seed'])
+        np.random.seed(self.config['seed'])
+        random.seed(self.config['seed'])
+
+        # Train the model
+        best_valid_score, best_valid_result = self.trainer.fit(
+            self.train_data,
+            self.valid_data,
+            saved=False,
+            show_progress=self.config['show_progress'],
+            verbose=True
+        )
+
+        # Switch model to evaluation mode
+        self.model.eval()
+        for param in self.model.parameters():
+            param.requires_grad = False
+
+    def recommend(self, top_k=10):
+        user_embeddings = self.trainer.model.user_embedding.weight.data
+        item_embeddings = self.trainer.model.item_embedding.weight.data
+
+        recommendations = {}
+        for user_id in self.test_data:
+            user_emb = user_embeddings[user_id[0]['user_id']]
+    #       scores = torch.matmul(user_emb.unsqueeze(0), item_embeddings.t()).squeeze(0)
+    #       top_items = torch.topk(scores, k=top_k).indices.tolist()
+            similarity_scores = torch.cosine_similarity(item_embeddings, user_emb.unsqueeze(0), dim=-1)
+            top_items = torch.topk(similarity_scores, k=top_k).indices.tolist()
+            recommendations[user_id[0]['user_id']] = top_items
+        
+        return recommendations
+
 
 if __name__ == '__main__':
     args = parse_arguments()
@@ -418,6 +465,12 @@ if __name__ == '__main__':
         preds.append(top_items)
         preds30.append(top30_items)
 
+    rec_sys = RecommenderSystem(config, train_data, valid_data, test_data)
+    rec_sys.train_model()
+    recommendations = rec_sys.recommend(top_k=10)
+
+
+
     # Graph Embeddings
     concatenated_embeddings = torch.cat((user_embeddings, item_embeddings), dim=0)
     graph_embeddings=concatenated_embeddings
@@ -439,7 +492,7 @@ if __name__ == '__main__':
     )
 
     adj_matrix = nx.adjacency_matrix(weighted_projected_graph).todense() # torch.Size([269, 269])
-    adj_matrix = torch.FloatTensor(adj_matrix) # changes to float because thinks that the values are between 0 and 1 for training -> should thinkg of a solultion for this
+    adj_matrix = torch.FloatTensor(adj_matrix)  #[  0.,   4.,   1.,  ...,  11.,  55.,   0.]
     
 
     num_nodes = len(weighted_projected_graph.nodes)
