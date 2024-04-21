@@ -296,8 +296,9 @@ def generate_counterfactual(user_index, mask, threshold=0.5):
         counterfactuals.append((edge, altered_prediction[user_index].detach()))
     return counterfactuals
 
-class RecommenderSystem:
+class RecommenderSystem(torch.nn.Module):
     def __init__(self, config, train_data, valid_data, test_data):
+        super(RecommenderSystem, self).__init__()
         self.config = config
         self.train_data = train_data
         self.valid_data = valid_data
@@ -465,11 +466,6 @@ if __name__ == '__main__':
         preds.append(top_items)
         preds30.append(top30_items)
 
-    rec_sys = RecommenderSystem(config, train_data, valid_data, test_data)
-    rec_sys.train_model()
-    recommendations = rec_sys.recommend(top_k=10)
-
-
 
     # Graph Embeddings
     concatenated_embeddings = torch.cat((user_embeddings, item_embeddings), dim=0)
@@ -496,7 +492,8 @@ if __name__ == '__main__':
     
 
     num_nodes = len(weighted_projected_graph.nodes)
-    model = RecommendationModel(num_nodes)
+    # model = RecommendationModel(num_nodes)
+    model = RecommenderSystem(config, train_data, valid_data, test_data)
 
     # Loss and optimizer
     criterion = nn.MSELoss()
