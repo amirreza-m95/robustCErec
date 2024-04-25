@@ -163,17 +163,31 @@ def extract_rules(model, train_data, preds, embs, device, pool_size=50):
     rule_dict_save['idx2rule'] = idx2rule
     return rule_dict_save
 
-def create_subgraphs_3_hops_away(graph, nodes):
+def create_subgraphs_3_hops_away(dataset):
+    import networkx as nx
+    interaction_data = dataset.inter_feat
+    user_ids = interaction_data['user_id']
+    item_ids = interaction_data['item_id']
+    edges = [(f'u{user_id}', f'i{item_id}') for user_id, item_id in zip(user_ids, item_ids)]
+
+    graph = nx.Graph()
+    graph.add_edges_from(edges)
+    from networkx.algorithms import bipartite
+    assert bipartite.is_bipartite(graph), "The graph is not bipartite"
+
+    # Extract 3-hop subgraphs for each node
+    uniqueUserIds = [f'u{user_id}' for user_id in user_ids.unique()]
+
     subgraphs = []
-    for node in nodes:
+    for node in uniqueUserIds:
         # Find all nodes 3 hops or fewer away from the current node
         nodes_within_3_hops = nx.single_source_shortest_path_length(graph, node, cutoff=2)
         
         # Extract the nodes (ignoring the distance, hence the .keys())
-        nodes = list(nodes_within_3_hops.keys())
+        uniqueUserIds = list(nodes_within_3_hops.keys())
         
         # Create a subgraph with these nodes
-        subgraph = graph.subgraph(nodes)
+        subgraph = graph.subgraph(uniqueUserIds)
         
         subgraphs.append(subgraph)
         
@@ -343,48 +357,13 @@ class RecommenderSystem(torch.nn.Module):
         
         return recommendations
 
-
-if __name__ == '__main__':
-    args = parse_arguments()
-    device = torch.device(f'cuda:{args.device}' if torch.cuda.is_available() else 'cpu')
-
-    # Load the dataset from RecBole (code from RS-BGRec repository)
-    from recbole.config import Config
-    config = Config(model=args.model, #LightGCN
-                    dataset=args.dataset, #lastfm-1k
-                    config_file_list=args.config_file_list, #['config/lastfm-1k.yaml'] 
-                    config_dict=args.config_dict) #None
-    config['data_path'] = os.path.join(config.file_config_dict['data_path'], config.dataset) #data/lastfm-1k
-
-    from data.dataset import Dataset
-    dataset = Dataset(config) 
-    # dataset.inter_feat => tensor([[  0,   0], [  0,   1], [  0,   2], ...]) user_id, item_id pairs [200586 rows x 2 columns]
-    # dataset.inter_feat.iloc[:,0].nunique() # 269 unique user_ids # dataset.inter_feat.iloc[:,1].nunique() # 51610 unique item_ids
-    # dataset.inter_feat.iloc[:,0].value_counts() # user_id counts
-
-    splits, indices = data_utils.split_data(dataset)
-    train_indices = indices[0] # len 214
-    val_indices = indices[1] # 26
-
-    # 3hop subgraph extraction ---------------------------------------------------
-    import networkx as nx
-    interaction_data = dataset.inter_feat
-    user_ids = interaction_data['user_id']
-    item_ids = interaction_data['item_id']
-    edges = [(f'u{user_id}', f'i{item_id}') for user_id, item_id in zip(user_ids, item_ids)]
-
-    G = nx.Graph()
-    G.add_edges_from(edges)
+def bipartite_graph(dataset):
     from networkx.algorithms import bipartite
-    assert bipartite.is_bipartite(G), "The graph is not bipartite"
-
-    # Extract 3-hop subgraphs for each node
-    uniqueUserIds = [f'u{user_id}' for user_id in user_ids.unique()]
-    subgraphs = create_subgraphs_3_hops_away(G, uniqueUserIds)
-    # ----------------------------------------------------------------------------
-
-
-    # Create bipartite networkx graph --------------------------------------------
+    user_ids = dataset.inter_feat.iloc[:,0]
+    item_ids = dataset.inter_feat.iloc[:,1]
+    edges = [(f'u{user_id}', f'i{item_id}') for user_id, item_id in zip(user_ids, item_ids)]
+    
+    import networkx as nx
     BG = nx.Graph()
     nodes_set_user = [f'u{user_id}' for user_id in user_ids.unique()]
     nodes_set_item = [f'i{item_id}' for item_id in item_ids.unique()]
@@ -395,17 +374,57 @@ if __name__ == '__main__':
     edges = [(f'u{user_id}', f'i{item_id}') for user_id, item_id in zip(user_ids, item_ids)]
     BG.add_edges_from(edges)
 
+
     # Getting the bipartite nodes with bipartite attribute 0
     # bipartite_nodes_0 = {n for n, d in B.nodes(data=True) if d['bipartite'] == 0}
-
     from networkx.algorithms import bipartite
     assert bipartite.is_bipartite(BG), "The graph is not bipartite"
     weighted_projected_graph = bipartite.weighted_projected_graph(BG, nodes_set_user)
+
+    return BG, weighted_projected_graph, edges
+
+
+def load_dataset():
+    # Load the dataset from RecBole (code from RS-BGRec repository)
+    from recbole.config import Config
+    config = Config(model=args.model, dataset=args.dataset, config_file_list=args.config_file_list, config_dict=args.config_dict)
+    config['data_path'] = os.path.join(config.file_config_dict['data_path'], config.dataset)
+    from data.dataset import Dataset
+    dataset = Dataset(config)
+    # dataset.inter_feat => tensor([[  0,   0], [  0,   1], [  0,   2], ...]) user_id, item_id pairs [200586 rows x 2 columns]
+    # dataset.inter_feat.iloc[:,0].nunique() # 269 unique user_ids # dataset.inter_feat.iloc[:,1].nunique() # 51610 unique item_ids
+    # dataset.inter_feat.iloc[:,0].value_counts() # user_id counts
+    return dataset, config
+
+# function to remove a specific user,item pair from the dataset
+def remove_user_item_pair(dataset, user_id, item_id):
+    
+    dataset.inter_feat = dataset.inter_feat[~((dataset.inter_feat['user_id'] == user_id) & (dataset.inter_feat['item_id'] == item_id))]
+    dataset.inter_feat = dataset.inter_feat[~((dataset.inter_feat['user_id'] == item_id) & (dataset.inter_feat['item_id'] == user_id))]
+
+    return dataset
+
+
+if __name__ == '__main__':
+    args = parse_arguments()
+    device = torch.device(f'cuda:{args.device}' if torch.cuda.is_available() else 'cpu')
+
+    dataset, config = load_dataset()
+
+    splits, indices = data_utils.split_data(dataset)
+    train_indices = indices[0] # len 214
+    val_indices = indices[1] # 26
+
+    # 3hop subgraph extraction ---------------------------------------------------
+    subgraphs = create_subgraphs_3_hops_away(dataset)
+
+    # Create bipartite networkx graph --------------------------------------------
+    BG, weighted_projected_graph, edges  = bipartite_graph(dataset)
+
     # nx.get_edge_attributes(weighted_projected_graph, 'weight') #('u1', 'u109'): 7
     unique_items, sortedValofConnections = count_unique_and_sorted_occurrences(edges)
     filterd_tuples = filter_tuples_by_id(edges, 'u1')
     # ----------------------------------------------------------------------------
-
 
     # from sklearn.model_selection import train_test_split
     # trainD, validtest = train_test_split(dataset.inter_feat, test_size=0.2, random_state=42)
