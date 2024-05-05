@@ -416,14 +416,14 @@ if __name__ == '__main__':
     val_indices = indices[1] # 26
 
     # 3hop subgraph extraction ---------------------------------------------------
-    subgraphs = create_subgraphs_3_hops_away(dataset)
+    # subgraphs = create_subgraphs_3_hops_away(dataset)
 
-    # Create bipartite networkx graph --------------------------------------------
-    BG, weighted_projected_graph, edges  = bipartite_graph(dataset)
+    # # Create bipartite networkx graph --------------------------------------------
+    # BG, weighted_projected_graph, edges  = bipartite_graph(dataset)
 
-    # nx.get_edge_attributes(weighted_projected_graph, 'weight') #('u1', 'u109'): 7
-    unique_items, sortedValofConnections = count_unique_and_sorted_occurrences(edges)
-    filterd_tuples = filter_tuples_by_id(edges, 'u1')
+    # # nx.get_edge_attributes(weighted_projected_graph, 'weight') #('u1', 'u109'): 7
+    # unique_items, sortedValofConnections = count_unique_and_sorted_occurrences(edges)
+    # filterd_tuples = filter_tuples_by_id(edges, 'u1')
     # ----------------------------------------------------------------------------
 
     # from sklearn.model_selection import train_test_split
@@ -433,7 +433,8 @@ if __name__ == '__main__':
 
     # dataset spliting
     from recbole.data import data_preparation
-    train_data, valid_data, test_data = data_preparation(config, dataset)
+    dataset_copy = dataset.copy(new_inter_feat=dataset.inter_feat)
+    train_data, valid_data, test_data = data_preparation(config, dataset_copy)
 
 
     from recbole.utils import get_trainer, get_model
