@@ -199,7 +199,7 @@ def main():
     assert data['user', 'rates', 'movie'].num_edges == len(ratings_df)
     assert data['movie'].num_features == 404
     
-    data
+    print(data)
 
     train_data, val_data, test_data = T.RandomLinkSplit(
         num_val=0.1,
@@ -208,7 +208,9 @@ def main():
         edge_types=[('user', 'rates', 'movie')],
         rev_edge_types=[('movie', 'rev_rates', 'user')],
     )(data)
-    train_data, val_data
+    print(train_data)
+    print(val_data)
+    print(test_data)
 
     from torch_geometric.nn import SAGEConv, to_hetero
     

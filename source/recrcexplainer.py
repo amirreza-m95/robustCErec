@@ -411,6 +411,32 @@ if __name__ == '__main__':
 
     dataset, config = load_dataset()
 
+    # dataset spliting
+    import torch_geometric.transforms as T
+    from torch_geometric.data import HeteroData
+
+    data = HeteroData()
+
+    user_features = torch.eye(dataset.inter_feat.iloc[:,0].nunique())
+    item_features = torch.eye(dataset.inter_feat.iloc[:,1].nunique())
+
+    data['user'].x = user_features
+    data['item'].x = item_features
+    data['user', 'interacts', 'item'].edge_index = torch.stack([torch.tensor(dataset.inter_feat['user_id'].values),
+                                                                torch.tensor(dataset.inter_feat['item_id'].values)], dim=0)
+    # data['user', 'interacts', 'item'].edge_attr = torch.ones(dataset.inter_feat.shape[0])
+
+    data = T.ToUndirected()(data)
+
+    # dataset spliting
+    train_data, val_data, test_data = T.RandomLinkSplit(
+        num_val=0.1,
+        num_test=0.1,
+        neg_sampling_ratio=0.0,
+        edge_types=[('user', 'interacts', 'item')],
+        rev_edge_types=[('item', 'rev_interacts', 'user')],
+    )(data)
+
     splits, indices = data_utils.split_data(dataset)
     train_indices = indices[0] # len 214
     val_indices = indices[1] # 26
