@@ -405,7 +405,187 @@ def remove_user_item_pair(dataset, user_id, item_id):
     return dataset
 
 
+from torch_geometric.nn import SAGEConv, to_hetero
+    
+class GNNEncoder(torch.nn.Module):
+    def __init__(self, hidden_channels, out_channels):
+        super().__init__()
+        self.conv1 = SAGEConv((-1, -1), hidden_channels)
+        self.conv2 = SAGEConv((-1, -1), out_channels)
+
+    def forward(self, x, edge_index):
+        x = self.conv1(x, edge_index).relu()
+        x = self.conv2(x, edge_index)
+        return x
+
+    
+class EdgeDecoder(torch.nn.Module):
+    def __init__(self, hidden_channels):
+        super().__init__()
+        self.lin1 = torch.nn.Linear(2 * hidden_channels, hidden_channels)
+        self.lin2 = torch.nn.Linear(hidden_channels, 1)
+
+    def forward(self, z_dict, edge_label_index):
+        row, col = edge_label_index
+        z = torch.cat([z_dict['user'][row], z_dict['item'][col]], dim=-1)
+
+        z = self.lin1(z).relu()
+        z = self.lin2(z)
+        return z.view(-1)
+
+
+class Model(torch.nn.Module):
+    def __init__(self, hidden_channels):
+        super().__init__()
+        self.encoder = GNNEncoder(hidden_channels, hidden_channels)
+        self.encoder = to_hetero(self.encoder, data.metadata(), aggr='sum')
+        self.decoder = EdgeDecoder(hidden_channels)
+
+    def forward(self, x_dict, edge_index_dict, edge_label_index):
+        z_dict = self.encoder(x_dict, edge_index_dict)
+        return self.decoder(z_dict, edge_label_index)
+
+
+def train():
+    model.train()
+    optimizer.zero_grad()
+    pred = model(train_data.x_dict, train_data.edge_index_dict,
+                    train_data['user', 'item'].edge_label_index)
+    target = train_data['user', 'item'].edge_label
+    loss = F.mse_loss(pred, target)
+    loss.backward()
+    optimizer.step()
+    return float(loss)
+    
+@torch.no_grad()
+def test(data):
+    data = data.to(device)
+    model.eval()
+    pred = model(data.x_dict, data.edge_index_dict,
+                    data['user', 'item'].edge_label_index)
+    pred = pred.clamp(min=0, max=5)
+    target = data['user', 'item'].edge_label.float()
+    rmse = F.mse_loss(pred, target).sqrt()
+    return float(rmse)
+
+
+def neg_sampler(edge_index):
+    from torch_geometric.utils import degree
+
+    # Define your bipartite edge index (start nodes are only in edge_index[0])
+    # edge_index = torch.tensor([[0, 0, 1, 1, 2, 3],  # Start nodes
+    #                         [4, 5, 6, 7, 8, 9]], dtype=torch.long)  # End nodes
+
+    # Calculate the degree of start nodes
+    start_node_degree = degree(edge_index[0], num_nodes=edge_index.max().item() + 1)
+
+    # Determine the unique end nodes (potential targets for negative edges)
+    unique_end_nodes = torch.unique(edge_index[1])
+
+    # Container for all negative samples
+    all_neg_samples = []
+
+    # Generate negative samples based on the degree of start nodes
+    for node in torch.unique(edge_index[0]):
+        current_edges = edge_index[:, edge_index[0] == node]
+        possible_negatives = torch.tensor([node.item()], dtype=torch.long).repeat(len(unique_end_nodes)).unsqueeze(0)
+        possible_negatives = torch.cat((possible_negatives, unique_end_nodes.unsqueeze(0)), dim=0)
+        
+        # Exclude current positive edges
+        val, idx = torch.sort(torch.cat((current_edges, possible_negatives), dim=1), dim=1)
+        _, counts = torch.unique(val, return_counts=True, dim=1)
+        negatives = possible_negatives[:, counts == 1]
+        
+        # Sample up to the number of positive edges of this node, or fewer if not enough possible negatives
+        num_samples = min(current_edges.size(1), negatives.size(1))
+        if num_samples > 0:
+            sampled_indices = torch.randperm(negatives.size(1))[:num_samples]
+            sampled_negatives = negatives[:, sampled_indices]
+            all_neg_samples.append(sampled_negatives)
+    return all_neg_samples
+
+
+
+
 if __name__ == '__main__':
+    args = parse_arguments()
+    device = torch.device(f'cuda:{args.device}' if torch.cuda.is_available() else 'cpu')
+
+    dataset, config = load_dataset()
+
+    # dataset spliting
+    import torch_geometric.transforms as T
+    from torch_geometric.data import HeteroData
+
+    data = HeteroData()
+
+    user_features = torch.eye(dataset.inter_feat.iloc[:,0].nunique()+1)
+    # item_features = torch.eye(dataset.inter_feat.iloc[:,1].nunique())
+    item_features = torch.zeros(dataset.inter_feat.iloc[:,1].nunique()+1, dataset.inter_feat.iloc[:,0].nunique())
+
+    data['user'].x = user_features
+    data['item'].x = item_features
+    data['user', 'interacts', 'item'].edge_index = torch.stack([torch.tensor(dataset.inter_feat['user_id'].values),
+                                                                torch.tensor(dataset.inter_feat['item_id'].values)], dim=0)
+    edgeIndexSize = len(data['user', 'interacts', 'item'].edge_index[0])
+    interacting = torch.ones(edgeIndexSize*2)
+    # data['user', 'interacts', 'item'].edge_label = interacting 
+    # data['user', 'interacts', 'item'].edge_attr = torch.ones(dataset.inter_feat.shape[0])
+    
+    neg_samples_array = neg_sampler(data['user', 'interacts', 'item'].edge_index)
+    neg_samples = torch.cat(neg_samples_array, dim=1)
+
+    data['user', 'interacts', 'item'].edge_index = torch.cat((data['user', 'interacts', 'item'].edge_index, neg_samples), dim=1)
+    data['user', 'interacts', 'item'].edge_label = torch.cat((interacting, torch.zeros(edgeIndexSize)), dim=0)
+
+
+    data = T.ToUndirected()(data)
+
+    shuffled_indices = torch.randperm(data['user', 'interacts', 'item'].edge_index.size(1))
+    data['user', 'interacts', 'item'].edge_index = data['user', 'interacts', 'item'].edge_index[:, shuffled_indices]
+    data['user', 'interacts', 'item'].edge_label = data['user', 'interacts', 'item'].edge_label[shuffled_indices]
+    
+
+    
+    # dataset spliting
+    train_data, val_data, test_data = T.RandomLinkSplit(
+        num_val=0.1,
+        num_test=0.1,
+        neg_sampling_ratio=0.0,
+        edge_types=[('user', 'interacts', 'item')],
+        rev_edge_types=[('item', 'rev_interacts', 'user')],
+    )(data)
+
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    
+    model = Model(hidden_channels=32).to(device)
+    
+    print(model)
+    import torch.nn.functional as F
+    
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+
+    for epoch in range(1, 50):
+        train_data = train_data.to(device)
+        loss = train()
+        train_rmse = test(train_data)
+        val_rmse = test(val_data)
+        print(f'Epoch: {epoch:03d}, Loss: {loss:.4f}, Train: {train_rmse:.4f}, '
+                f'Val: {val_rmse:.4f}')
+        
+    with torch.no_grad():
+        test_data = test_data.to(device)
+        pred = model(test_data.x_dict, test_data.edge_index_dict,
+                     test_data['user', 'item'].edge_label_index)
+        pred = pred.clamp(min=0, max=5)
+        target = test_data['user', 'item'].edge_label.float()
+        rmse = F.mse_loss(pred, target).sqrt()
+        print(f'Test RMSE: {rmse:.4f}')
+
+
+
+
+def main2():    
     args = parse_arguments()
     device = torch.device(f'cuda:{args.device}' if torch.cuda.is_available() else 'cpu')
 
@@ -597,7 +777,6 @@ if __name__ == '__main__':
 
     print('finished')
 
-
 def tempMain():
 
     
@@ -636,8 +815,6 @@ def tempMain():
     torch.save(explanation_graphs, explanations_path)
     if (args.lambda_ != 0.0):
         torch.save(counterfactual_graphs, counterfactuals_path)
-
-
 
 def main():
 

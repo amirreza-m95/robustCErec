@@ -302,12 +302,12 @@ def main():
         rmse = F.mse_loss(pred, target).sqrt()
         print(f'Test RMSE: {rmse:.4f}')
     
-    userId = test_data['user', 'movie'].edge_label_index[0].cpu().numpy()
-    movieId = test_data['user', 'movie'].edge_label_index[1].cpu().numpy()
-    pred = pred.cpu().numpy()
-    target = target.cpu().numpy()
+    # userId = test_data['user', 'movie'].edge_label_index[0].cpu().numpy()
+    # movieId = test_data['user', 'movie'].edge_label_index[1].cpu().numpy()
+    # pred = pred.cpu().numpy()
+    # target = target.cpu().numpy()
     
-    print(pd.DataFrame({'userId': userId, 'movieId': movieId, 'rating': pred, 'target': target}))
+    # print(pd.DataFrame({'userId': userId, 'movieId': movieId, 'rating': pred, 'target': target}))
 
 #            userId  movieId    rating  target
 # 0         468     1515  3.726183     3.0
@@ -322,30 +322,30 @@ def main():
 # 10081     367     1513  2.757144     3.0
 # 10082     598     1145  2.843732     2.5
 
-    # Your mappedUserId
-    mapped_user_id = unique_user_id[unique_user_id['userId'] == our_user_id]['mappedUserId'].values[0]
+    # # Your mappedUserId
+    # mapped_user_id = unique_user_id[unique_user_id['userId'] == our_user_id]['mappedUserId'].values[0]
     
-    # Select movies that you haven't seen before
-    movies_rated = ratings_df[ratings_df['mappedUserId'] == mapped_user_id]
-    movies_not_rated = movies_df[~movies_df.index.isin(movies_rated['movieId'])]
-    movies_not_rated = movies_not_rated.merge(unique_movie_id, on='movieId')
-    movie = movies_not_rated.sample(1)
+    # # Select movies that you haven't seen before
+    # movies_rated = ratings_df[ratings_df['mappedUserId'] == mapped_user_id]
+    # movies_not_rated = movies_df[~movies_df.index.isin(movies_rated['movieId'])]
+    # movies_not_rated = movies_not_rated.merge(unique_movie_id, on='movieId')
+    # movie = movies_not_rated.sample(1)
     
-    print(f"The movie we want to predict a raiting for is:  {movie['title'].item()}")
+    # print(f"The movie we want to predict a raiting for is:  {movie['title'].item()}")
 
-    # Create new `edge_label_index` between the user and the movie
-    edge_label_index = torch.tensor([
-        mapped_user_id,
-        movie.mappedMovieId.item()])
+    # # Create new `edge_label_index` between the user and the movie
+    # edge_label_index = torch.tensor([
+    #     mapped_user_id,
+    #     movie.mappedMovieId.item()])
     
     
-    with torch.no_grad():
-        test_data.to(device)
-        pred = model(test_data.x_dict, test_data.edge_index_dict, edge_label_index)
-        pred = pred.clamp(min=0, max=5).detach().cpu().numpy()
+    # with torch.no_grad():
+    #     test_data.to(device)
+    #     pred = model(test_data.x_dict, test_data.edge_index_dict, edge_label_index)
+    #     pred = pred.clamp(min=0, max=5).detach().cpu().numpy()
 
-    pred.item()
-
+    # pred.item()
+    from torch_geometric.explain.algorithm import GNNExplainer
     from torch_geometric.explain import Explainer, CaptumExplainer
     
     explainer = Explainer(
