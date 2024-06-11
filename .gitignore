@@ -4,6 +4,7 @@ data/*
 packages/*
 ckpt/*
 robustvenv/*
+GCN-Group-interpretation-jupyter/*
 dataset/*
 
 # Byte-compiled / optimized / DLL files
