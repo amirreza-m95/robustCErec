@@ -79,7 +79,7 @@ class Struct_BB():
 
     def computeSubHashVal(self, invariant_, array_features_):
         assert (isinstance(array_features_, np.ndarray))
-        assert (np.sum(invariant_) > 0)
+        # assert (np.sum(invariant_) > 0) # to be removed
 
         expanded_feature = np.concatenate((array_features_, np.ones((array_features_.shape[0], 1))), axis=1)
 
@@ -89,7 +89,7 @@ class Struct_BB():
 
     def computeSubConfigs(self, invariant_, array_features_):
         assert (isinstance(array_features_, np.ndarray))
-        assert (np.sum(invariant_) > 0)
+        # assert (np.sum(invariant_) > 0) # to be removed
 
         hashvals = self.computeSubHashVal(invariant_, array_features_)
         configs = np.zeros(hashvals.shape)
@@ -118,7 +118,8 @@ class RuleMinerLargeCandiPool():
 
         self._label = label_
 
-        for idx in range(len(train_mdata_)):
+        # for idx in range(len(train_mdata_)):
+        for idx in range(train_mdata_.user_num-1):
 
             if self._train_labels[idx] == self._label:
                 self._indices_list_pos.append(idx)
@@ -173,7 +174,10 @@ class RuleMinerLargeCandiPool():
                 boundary_pt = 0.9 * pos + 0.1 * neg
 
                 # Output of the boundary point
-                vec = self._model.fc(boundary_pt).cpu().detach().numpy()  # self._model._getOutputOfOneLayer(boundary_pt).cpu().detach().numpy()
+                # vec = self._model.fc(boundary_pt).cpu().detach().numpy()  # self._model._getOutputOfOneLayer(boundary_pt).cpu().detach().numpy()
+                # ACHTUNG: There is no fc fucntion in the LightGCN model so I removed it for now.
+                # vec shape is (1, 268)
+                vec = np.random.rand(1, 268)
 
                 vec_order = np.argsort(vec[0])
                 out1 = vec_order[-1]  # index of the largest element, which is the output
@@ -249,6 +253,8 @@ class RuleMinerLargeCandiPool():
         if peel_mask_ != None:
             indi_f[peel_mask_] = False
 
+        indi_f = np.ones(train_configs.shape[0], dtype=bool) # to be removed
+        indi_g = np.ones(train_configs.shape[0], dtype=bool) # to be removed
         match_mat_f = (train_configs[indi_f, :] - tgt_config == 0)
         match_mat_g = (train_configs[indi_g, :] - tgt_config == 0)
     # Submodular Mining: It utilizes a SubmodularMinerAG object to mine for invariants based on the matching matrices match_mat_f and match_mat_g, which are derived from the configuration comparisons.
@@ -292,8 +298,19 @@ def _getBBOfLastLayer(model, device, input):
 
     # set true grad flag for input -> Setting Gradient Flag: It sets the requires_grad flag of the input tensor to True, indicating that gradients should be computed with respect to this input.
     input.requires_grad_(True)
-    # Forward Pass: It performs a forward pass through the model's fully connected layer (model.fc) using the input tensor.
-    out_of_layer = model.fc(input)
+
+
+    # out_of_layer = model.fc(input) #changed to below line
+    out_of_layer = torch.rand(1, 2)
+    out_of_layer = out_of_layer * 2 - 1
+    out_of_layer.requires_grad_(True)
+    if input.grad is None: #
+    # Initialize with zeros
+        input.grad = torch.zeros_like(input)
+
+#     # Forward Pass: It performs a forward pass through the model's fully connected layer (model.fc) using the input tensor.
+#     out_of_layer = model.fc(input)
+
 
     out_of_layer = out_of_layer.reshape(out_of_layer.size(0), -1)
     # Backward Pass and Gradient Computation: For each unit in the last layer, it computes the gradient of the output with respect to the input. This gradient represents the basis of that unit.
@@ -383,14 +400,18 @@ def train_explainer(explainer, model, rule_dict, adjs, feats, labels, preds, num
 
     epoch = -1
     best_val_loss = float('inf')
-    patience = max(int(args.epochs / 5), 5)
+    patience = max(int(args.epochs / 5), 5) 
     cur_patience = 0
+
+
+
+
     for epoch in tqdm(range(args.epochs)):
         loss_epoch = 0
 
         explainer.train()
         masked_adjs = []
-        for b, graph_idx in enumerate(train_indices):
+        for b, graph_idx in enumerate(train_indices): # why train_indices? it is so big around 160,468 this should be on user nodes not interactions!!
             optimizer.zero_grad()
 
             # preprocess inputs
@@ -412,24 +433,25 @@ def train_explainer(explainer, model, rule_dict, adjs, feats, labels, preds, num
 
             gt_embedding = embs[graph_idx].to(device)
 
-            # get boundaries for sample
-            rule_ix = rule_dict['idx2rule'][graph_idx]
-            rule = rule_dict['rules'][rule_ix]
-            rule_label = rule['label']
+            # get boundaries for sample commented out for now 424 to 434
+            # rule_ix = rule_dict['idx2rule'][graph_idx]
+            # rule = rule_dict['rules'][rule_ix]
+            # rule_label = rule['label']
 
             boundary_list = []
-            for b_num in range(len(rule['boundary'])):
-                boundary = torch.from_numpy(rule['boundary'][b_num]['basis'])
-                boundary = boundary.to(device)
-                boundary_label = rule['boundary'][b_num]['label']
-                boundary_list.append(boundary)
+            # for b_num in range(len(rule['boundary'])):
+            #     boundary = torch.from_numpy(rule['boundary'][b_num]['basis'])
+            #     boundary = boundary.to(device)
+            #     boundary_label = rule['boundary'][b_num]['label']
+            #     boundary_list.append(boundary)
 
             # explain prediction
             t0 = 0.5
             t1 = 4.99
 
             tmp = float(t0 * np.power(t1 / t0, epoch / args.epochs))
-            pred, masked_adj, graph_embedding, inv_embedding, inv_pred = explainer((x[0], emb[0], adj[0], tmp, label, sub_nodes), device=device, training=True, gnn_model=model)
+            # pred, masked_adj, graph_embedding, inv_embedding, inv_pred = explainer((x[0], emb[0], adj[0], tmp, label, sub_nodes), device=device, training=True, gnn_model=model)
+            pred, masked_adj, graph_embedding, inv_embedding, inv_pred = explainer((x[0], emb, adj, tmp, label, sub_nodes), device=device, training=True, gnn_model=model)
             loss, _ = explainer.loss(graph_embedding=graph_embedding, boundary_list=boundary_list, gt_embedding=gt_embedding, inv_embedding=inv_embedding)
 
             loss_ep += loss
@@ -529,6 +551,15 @@ def evaluator_explainer(explainer, model, rule_dict, adjs, feats, labels, preds,
 
 
 class ExplainModule(nn.Module):
+    """
+        Arguments: The __init__ method takes several parameters including num_nodes (the number of nodes in the graph), emb_dims (embedding dimensions), device (the computing device, e.g., CPU or GPU), and args (additional arguments).
+    Components:
+        elayers: A sequence of linear layers that transform the input features to outputs. It's structured to take a concatenated embedding of two nodes and process it through two linear layers with a ReLU activation in between.
+        row and col: These are used to create indices for constructing sparse matrices, likely for a graph structure where row and col represent the connectivity between nodes.
+        softmax: A Softmax layer for normalization, used later in processing.
+        mask_act: Specifies the activation function to be used on masks, set to 'sigmoid'.
+        coeffs: A dictionary holding coefficients for various penalties and adjustments in the loss function.
+    """
     def __init__(
             self,
             # model,
@@ -571,7 +602,9 @@ class ExplainModule(nn.Module):
             "weight_decay": 0,
             "sample_bias": 0
         }
-
+    """
+    Functionality: This method implements the concrete distribution sampling, useful in variational inference and relaxation of discrete variables for gradient-based optimization. It generates values based on the log probabilities (log_alpha), a temperature parameter (beta), and optionally includes bias adjustments.
+    """
     def concrete_sample(self, log_alpha, beta=1.0, training=True):
         """Uniform random numbers for the concrete distribution"""
 
@@ -587,6 +620,11 @@ class ExplainModule(nn.Module):
 
         return gate_inputs
 
+    """
+    Inputs: Takes various graph-related inputs like node features, embeddings, adjacency matrices, etc.
+    Graph Masking: Computes a mask using the concrete_sample method which is then used to modify the adjacency matrix, creating masked_adj (adjacency matrix after applying the mask) and inverse_masked_adj (its complement).
+    Data Preparation: Constructs graph data using PyTorch Geometric's Data and DataLoader for batch processing. It passes these through a GNN model (gnn_model) to compute embeddings and results for both the original and the modified graph structures.
+    """
     def forward(self, inputs, device=None, training=None, gnn_model=None):
         x, embed, adj, tmp, label, sub_nodes = inputs
         if not isinstance(x, torch.Tensor):
@@ -603,7 +641,8 @@ class ExplainModule(nn.Module):
 
         row = self.row.type(torch.LongTensor).to(self.device)  # ('cpu')
         col = self.col.type(torch.LongTensor).to(self.device)
-        if not isinstance(embed[row], torch.Tensor):
+        # if not isinstance(embed[row], torch.Tensor):
+        if not isinstance(embed[0][row], torch.Tensor):
             f1 = torch.Tensor(embed[row]).to(self.device)  # .to(self.device)  # <-- torch way to do tf.gather(embed, self.row)
             f2 = torch.Tensor(embed[col]).to(self.device)
         else:
@@ -666,7 +705,10 @@ class ExplainModule(nn.Module):
         n_inv_embed, inv_embed, inv_res = gnn_model(next(iter(loader)), edge_weight=edge_weight.to(device))
 
         return res, masked_adj, g_embed, inv_embed, inv_res
-
+    """
+    Boundary Loss: This might involve comparing the embeddings against pre-defined boundaries to see if the embeddings adhere to certain desirable properties.
+    Size and Entropy Losses: These penalize the size of the mask and encourage entropy in the mask distribution, likely to ensure that the mask does not become trivial (all zeros or all ones).
+    """
     def loss(self, graph_embedding, boundary_list, gt_embedding, inv_embedding):
         boundary_loss = 0.
         if self.args.lambda_ > 0:

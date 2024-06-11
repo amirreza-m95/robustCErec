@@ -1105,10 +1105,10 @@ class AIDSTopologyAdversarialAttack(Dataset):
 
 def split_data(data, train_ratio=0.8, val_ratio=0.1):
     gen = torch.Generator().manual_seed(0)
-    train_size = int(len(data) * train_ratio)
-    val_size = int(len(data) * val_ratio)
-    test_size = len(data) - train_size - val_size
-    splits = random_split(data, lengths=[train_size, val_size, test_size], generator=gen)
+    train_size = int(len(data.inter_feat.iloc[:,0].value_counts()) * train_ratio)
+    val_size = int(len(data.inter_feat.iloc[:,0].value_counts()) * val_ratio)
+    test_size = len(data.inter_feat.iloc[:,0].value_counts()) - train_size - val_size
+    splits = random_split(data.inter_feat.iloc[:,0].value_counts(), lengths=[train_size, val_size, test_size], generator=gen)
     return splits, [split.indices for split in splits]
 
 

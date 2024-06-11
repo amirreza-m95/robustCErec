@@ -1,9 +1,11 @@
-epochs: 5 #100
+epochs: 2 #100
 # 'USER_ID_FIELD': user_id,
 # 'ITEM_ID_FIELD': item_id,
 TIMESTAMP_FIELD: 'timestamp'
-train_batch_size: 4096
-eval_batch_size: 2048
+# train_batch_size: 4096
+# eval_batch_size: 2048
+train_batch_size: 160468
+eval_batch_size: 20059
 neg_sampling:
     uniform: 1
 eval_step: 10
