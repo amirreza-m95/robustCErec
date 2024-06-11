@@ -97,6 +97,9 @@ class Struct_BB():
 
         return configs
 
+# The main purpose of this class is to identify the decision
+# boundaries that separate positive samples (belonging to a specific class) 
+# from negative samples (belonging to other classes).
 
 class RuleMinerLargeCandiPool():
     def __init__(self, model_, train_mdata_, train_preds_, train_embs_, label_, device, layer_start_=-1):
@@ -105,7 +108,7 @@ class RuleMinerLargeCandiPool():
         self._model = model_
         self._train_mdata = train_mdata_
         self._train_labels = train_preds_
-        self._train_embs = train_embs_
+        self._train_embs = train_embs_ # [51879, 64]
         self.device = device
 
         # The class of the seed image is considered positive
@@ -129,6 +132,10 @@ class RuleMinerLargeCandiPool():
 
         self._layer_start = layer_start_
 
+# generates a candidate pool of samples that are likely to be on the negative side of 
+# the decision boundary. It randomly selects samples from the negative samples and performs
+# a binary search to find the decision boundary that separates the positive and negative samples.
+# It stores the boundary points, opposite class labels, and initial sample indices.
     def CandidatePoolLabel(self, feature_, pool=50):
 
         self._bb = Struct_BB()
@@ -197,6 +204,12 @@ class RuleMinerLargeCandiPool():
         self._opposite_list = opposite_list
         self._initial_list = initial_list
 
+
+# Computing Invariant: The _getCoveredIndi method computes the covered indices 
+# based on the invariant (decision boundary) and the target configuration. 
+# It compares the computed configurations with the target configuration and checks
+#  if they match. It returns a boolean array indicating which samples are covered by 
+#  the invariant.
     def _getCoveredIndi(self, invariant_, tgt_config_):
         num_boundaries = np.sum(invariant_)
         array_features_ = self._train_embs.float().reshape(self._train_embs.size(0), -1).cpu().numpy()  # self._train_mdata._getArrayFeatures()
@@ -213,6 +226,12 @@ class RuleMinerLargeCandiPool():
 
         return cover_indi
 
+
+# mines the invariant (decision boundary) for a specific target index, feature, label, 
+# and other parameters. It computes the configurations and matches them with the target 
+# configuration. It uses a submodular minimization algorithm to iteratively select the 
+# most informative boundary and update the invariant. It returns the mined invariant, 
+# updated boundary points, opposite class labels, and initial sample indices.
     def getInvariantClassifier(self, tgt_idx_, feature, label, org_train_labels_, delta_constr_=0, peel_mask_=None):  # tgt_idx_ is probably not used
         train_configs = self._train_configs
     # Configuration Comparison: It compares the configurations of the training samples with the target configuration (tgt_config) derived from the provided feature.

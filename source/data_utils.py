@@ -17,6 +17,48 @@ import torch.nn.functional as F
 from torch_geometric.utils import negative_sampling, sort_edge_index, to_dense_adj
 import random
 
+class LastFM(InMemoryDataset):
+    def __init__(self, root, transform=None, pre_transform=None):
+        self.name = 'lastfm-1k'
+        super(LastFM, self).__init__(root, transform, pre_transform)
+        self.data, self.slices = torch.load(self.processed_paths[0])
+
+    # @property
+    # def raw_dir(self):
+    #     return os.path.join(self.root, self.name, 'raw')
+
+    @property
+    def processed_dir(self):
+        return os.path.join(self.root, self.name, 'processed')
+
+    @property
+    def raw_file_names(self):
+        return ['lastFM']
+
+    @property
+    def processed_file_names(self):
+        return ['data.pt']
+
+    @staticmethod
+    def read_lastFM_data(folder: str):
+        with open(os.path.join(folder, "_node_features.pkl"), 'rb') as f:
+            x: np.array = pickle.load(f)
+        x: torch.FloatTensor = torch.from_numpy(x)
+        edge_index: np.array = np.load(os.path.join(folder, "_edge_index.npy"))
+        edge_index: torch.tensor = torch.tensor(edge_index, dtype=torch.long).T
+        batch: np.array = np.load(os.path.join(folder, "_node_indicator.npy")) - 1  # from zero
+        y: np.array = np.load(os.path.join(folder, "_graph_labels.npy"))
+        y: torch.tensor = torch.tensor(y, dtype=torch.long)
+
+        data = Data(x=x, edge_index=edge_index, y=y)
+        data, slices = LastFM.collate([data])
+
+        return data, slices
+
+    def process(self):
+        # Read data into huge `Data` list.
+        self.data, self.slices = LastFM.read_lastFM_data(self.name)
+        torch.save((self.data, self.slices), self.processed_paths[0])
 
 class MutagenicityNoisy(Dataset):
     def __init__(self, root, noise, transform=None, pre_transform=None):
@@ -1160,6 +1202,8 @@ class REDDITPreTransform(object):
 def load_dataset(dataset_name, root='../data/'):
     if dataset_name == 'Mutagenicity':
         data = TUDataset(root=root, name='Mutagenicity', use_node_attr=True)
+    elif dataset_name == 'lastfm-1k':
+        data = LastFM(root=root)
     elif "MutagenicityNoisy" in dataset_name:
         noise = int(dataset_name[17:])
         data = MutagenicityNoisy(root=root, noise=noise)
@@ -1321,7 +1365,7 @@ def sample_subsets(indices, dataset, num_samples=5):
 
 if __name__ == '__main__':
     # generate datasets
-    for dataset_name in ['Mutagenicity', 'Proteins', 'IMDB-B', 'Mutag', 'AIDS', 'NCI1', 'Graph-SST2', 'DD', 'REDDIT-B']:
+    for dataset_name in ['lastfm-1k','Mutagenicity', 'Proteins', 'IMDB-B', 'Mutag', 'AIDS', 'NCI1', 'Graph-SST2', 'DD', 'REDDIT-B']:
         dataset = load_dataset(dataset_name)
 
     # generate noisy datasets
